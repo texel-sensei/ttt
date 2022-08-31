@@ -1,10 +1,26 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    posts (id) {
+    frames (id) {
         id -> Integer,
-        title -> Text,
-        body -> Text,
-        published -> Bool,
+        project -> Integer,
+        start -> Timestamp,
+        end -> Nullable<Timestamp>,
     }
 }
+
+diesel::table! {
+    projects (id) {
+        id -> Integer,
+        name -> Text,
+        archived -> Bool,
+        last_access_time -> Timestamp,
+    }
+}
+
+diesel::joinable!(frames -> projects (project));
+
+diesel::allow_tables_to_appear_in_same_query!(
+    frames,
+    projects,
+);
