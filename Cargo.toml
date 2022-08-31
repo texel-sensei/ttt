@@ -9,5 +9,6 @@ edition = "2021"
 chrono = { version = "0.4.22", features = ["serde"] }
 clap = { version = "3.2.17", features = ["derive"] }
 diesel = { version = "2.0.0", features = ["chrono", "sqlite", "serde_json"] }
+diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
 dotenvy = "0.15.3"
 inquire = { version = "0.3.0", features = ["date"] }

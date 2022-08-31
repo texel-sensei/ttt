@@ -8,6 +8,10 @@ use inquire::{DateSelect, Confirm, CustomType, MultiSelect, Select};
 mod schema;
 use schema::posts;
 
+use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+
 #[derive(Queryable)]
 pub struct Post {
     pub id: i32,
@@ -27,8 +31,13 @@ pub fn establish_connection() -> SqliteConnection {
     dotenv().ok();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    SqliteConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+    let mut connection = SqliteConnection::establish(&database_url)
+        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+
+    use diesel_migrations::MigrationHarness;
+    connection.run_pending_migrations(MIGRATIONS).unwrap();
+
+    connection
 }
 
 pub fn create_post(conn: &mut SqliteConnection, title: &str, body: &str) -> usize {
@@ -101,8 +110,9 @@ fn do_inquire_stuff() -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
-
     let connection = &mut establish_connection();
+
+
     println!("What would you like your title to be?");
     let mut titlestr = String::new();
     stdin().read_line(&mut titlestr).unwrap();
