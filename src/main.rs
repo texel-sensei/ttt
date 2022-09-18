@@ -1,15 +1,19 @@
-use std::{error::Error, env, io::{stdin, Read}};
+use std::{
+    env,
+    error::Error,
+    io::{stdin, Read},
+};
 
 use chrono::NaiveDateTime;
 use clap::{Parser, Subcommand};
-use diesel::{Queryable, SqliteConnection, Connection, prelude::*};
+use diesel::{prelude::*, Connection, Queryable, SqliteConnection};
 use dotenvy::dotenv;
-use inquire::{DateSelect, Confirm, CustomType, MultiSelect, Select};
-mod schema;
+use inquire::{Confirm, CustomType, DateSelect, MultiSelect, Select};
 mod model;
+mod schema;
 
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use model::NewProject;
+use model::{NewProject, Project, Timestamp};
 use schema::projects;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -38,7 +42,7 @@ struct Cli {
 struct AnalyzeOptions {
     /// Show the last 24h
     #[clap(short, long, action, default_value = "false")]
-    since_yesterday: bool
+    since_yesterday: bool,
 }
 
 impl AnalyzeOptions {
@@ -60,7 +64,7 @@ enum Action {
     },
 
     /// Analyze activities performed in a time frame
-    Analyze (AnalyzeOptions)
+    Analyze(AnalyzeOptions),
 }
 
 fn do_inquire_stuff() -> Result<(), Box<dyn Error>> {
@@ -99,24 +103,28 @@ fn main() {
         Action::Start => {
             let options = (1i32..5i32).map(|i| i.to_string());
 
-            let answers = Select::new("Select some numbers", options.collect()).prompt().unwrap();
+            let answers = Select::new("Select some numbers", options.collect())
+                .prompt()
+                .unwrap();
             dbg!(answers);
-        },
+        }
         Action::Stop => todo!(),
         Action::NewProject { name } => {
-            let new_project = NewProject{name: &name};
-             diesel::insert_into(projects::table)
-                 .values(&new_project)
-                 .execute(connection)
-                 .expect("Error creating project")
-                 ;
-        },
-        Action::Analyze ( options ) => {
+            let new_project = NewProject {
+                name: &name,
+                last_access_time: &Timestamp::now(),
+            };
+            diesel::insert_into(projects::table)
+                .values(&new_project)
+                .execute(connection)
+                .expect("Error creating project");
+        }
+        Action::Analyze(options) => {
             if options.is_interactive() {
                 do_inquire_stuff().unwrap();
             } else {
                 println!("No activities since yesterday, since we didn't implement tracking yet!");
             }
-        },
+        }
     }
 }

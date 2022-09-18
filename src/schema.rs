@@ -4,8 +4,17 @@ diesel::table! {
     frames (id) {
         id -> Integer,
         project -> Integer,
-        start -> Timestamp,
-        end -> Nullable<Timestamp>,
+        start -> Text,
+        end -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    posts (id) {
+        id -> Integer,
+        title -> Text,
+        body -> Text,
+        published -> Bool,
     }
 }
 
@@ -14,13 +23,10 @@ diesel::table! {
         id -> Integer,
         name -> Text,
         archived -> Bool,
-        last_access_time -> Timestamp,
+        last_access_time -> Text,
     }
 }
 
 diesel::joinable!(frames -> projects (project));
 
-diesel::allow_tables_to_appear_in_same_query!(
-    frames,
-    projects,
-);
+diesel::allow_tables_to_appear_in_same_query!(frames, posts, projects,);

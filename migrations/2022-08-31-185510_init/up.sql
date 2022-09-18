@@ -2,8 +2,8 @@
 CREATE TABLE frames (
 	id INTEGER NOT NULL PRIMARY KEY,
 	project INTEGER NOT NULL,
-	start DATETIME NOT NULL,
-	end DATETIME,
+	start VARCHAR NOT NULL,
+	end VARCHAR,
 	FOREIGN KEY(project) REFERENCES projects(id)
 );
 
@@ -11,5 +11,5 @@ CREATE TABLE projects (
 	id INTEGER NOT NULL PRIMARY KEY,
 	name VARCHAR NOT NULL UNIQUE,
 	archived BOOLEAN NOT NULL DEFAULT 0,
-	last_access_time DATETIME NOT NULL DEFAULT (DATETIME('now', 'localtime'))
+	last_access_time VARCHAR NOT NULL
 );
