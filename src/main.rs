@@ -16,6 +16,8 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use model::{NewProject, Project, Timestamp};
 use schema::projects;
 
+use crate::{model::NewFrame, schema::frames};
+
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 pub fn establish_connection() -> SqliteConnection {
@@ -101,12 +103,40 @@ fn main() {
     let cli = Cli::parse();
     match cli.action {
         Action::Start => {
-            let options = (1i32..5i32).map(|i| i.to_string());
+            use crate::schema::projects::dsl::*;
+            let mut possible_projects = projects
+                .filter(archived.eq(false))
+                .load::<Project>(connection)
+                .expect("Failed to query database");
 
-            let answers = Select::new("Select some numbers", options.collect())
-                .prompt()
-                .unwrap();
-            dbg!(answers);
+            possible_projects.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
+
+            let selected_project = Select::new(
+                "Select the project to start",
+                possible_projects.iter().map(|p| &p.name).collect(),
+            )
+            .raw_prompt()
+            .unwrap();
+
+            let index = selected_project.index;
+            let selected_project = &mut possible_projects[index];
+
+            let now = Timestamp::now();
+            let frame = NewFrame {
+                project: selected_project.id,
+                start: &now,
+                end: None,
+            };
+            diesel::insert_into(frames::table)
+                .values(&frame)
+                .execute(connection)
+                .expect("Failed to insert frame into database");
+
+            selected_project.last_access_time = now;
+            diesel::update(&*selected_project)
+                .set(&*selected_project)
+                .execute(connection)
+                .expect("Failed to update project access time");
         }
         Action::Stop => todo!(),
         Action::NewProject { name } => {

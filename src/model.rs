@@ -47,7 +47,15 @@ pub struct NewProject<'a> {
     pub last_access_time: &'a Timestamp,
 }
 
-#[derive(Debug, AsExpression, FromSqlRow)]
+#[derive(Insertable)]
+#[diesel(table_name = frames)]
+pub struct NewFrame<'a> {
+    pub project: i32,
+    pub start: &'a Timestamp,
+    pub end: Option<&'a Timestamp>,
+}
+
+#[derive(Debug, AsExpression, FromSqlRow, PartialEq, Eq, PartialOrd, Ord)]
 #[diesel(sql_type=diesel::sql_types::Text)]
 pub struct Timestamp(pub DateTime<FixedOffset>);
 
