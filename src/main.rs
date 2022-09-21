@@ -6,14 +6,14 @@ use std::{
 
 use chrono::NaiveDateTime;
 use clap::{Parser, Subcommand};
-use diesel::{prelude::*, Connection, Queryable, SqliteConnection};
+use diesel::{connection, prelude::*, Connection, Queryable, SqliteConnection};
 use dotenvy::dotenv;
 use inquire::{Confirm, CustomType, DateSelect, MultiSelect, Select};
 mod model;
 mod schema;
 
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use model::{NewProject, Project, Timestamp};
+use model::{Frame, NewProject, Project, Timestamp};
 use schema::projects;
 
 use crate::{model::NewFrame, schema::frames};
@@ -97,12 +97,46 @@ fn do_inquire_stuff() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn get_current_frame(connection: &mut SqliteConnection) -> Option<Frame> {
+    use crate::schema::frames::dsl::*;
+    let current = frames.filter(end.is_null()).load::<Frame>(connection);
+    current.ok().and_then(|mut f| f.pop())
+}
+
+fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
+    use crate::schema::projects::dsl::*;
+    let now = Timestamp::now();
+    frame.end = Some(now.clone());
+    diesel::update(frames::table)
+        .set(&*frame)
+        .execute(connection)
+        .expect("Failed to update frame");
+    let mut project = projects
+        .filter(id.eq(frame.project))
+        .load::<Project>(connection)
+        .expect("Failed to query database")
+        .pop()
+        .expect(&format!("Found no project for id {}", frame.id));
+    let task = &project.name;
+    let duration = frame.end.unwrap().0 - frame.start.0;
+    project.last_access_time = now;
+    diesel::update(&project)
+        .set(&project)
+        .execute(connection)
+        .expect("Failed to update project access time");
+
+    println!("Tracked time for Task {}: {}", task, duration);
+}
+
 fn main() {
     let connection = &mut establish_connection();
 
     let cli = Cli::parse();
     match cli.action {
         Action::Start => {
+            if let Some(mut current) = get_current_frame(connection) {
+                stop_frame(connection, &mut current)
+            }
             use crate::schema::projects::dsl::*;
             let mut possible_projects = projects
                 .filter(archived.eq(false))
@@ -110,6 +144,10 @@ fn main() {
                 .expect("Failed to query database");
 
             possible_projects.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
+            if possible_projects.is_empty() {
+                println!("Please create a project before starting a task.");
+                return;
+            }
 
             let selected_project = Select::new(
                 "Select the project to start",
@@ -138,7 +176,13 @@ fn main() {
                 .execute(connection)
                 .expect("Failed to update project access time");
         }
-        Action::Stop => todo!(),
+        Action::Stop => {
+            if let Some(mut current) = get_current_frame(connection) {
+                stop_frame(connection, &mut current)
+            } else {
+                println!("Nothing to do!");
+            }
+        }
         Action::NewProject { name } => {
             let new_project = NewProject {
                 name: &name,

@@ -55,7 +55,7 @@ pub struct NewFrame<'a> {
     pub end: Option<&'a Timestamp>,
 }
 
-#[derive(Debug, AsExpression, FromSqlRow, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, AsExpression, FromSqlRow, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[diesel(sql_type=diesel::sql_types::Text)]
 pub struct Timestamp(pub DateTime<FixedOffset>);
 
