@@ -107,7 +107,7 @@ fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
     use crate::schema::projects::dsl::*;
     let now = Timestamp::now();
     frame.end = Some(now.clone());
-    diesel::update(frames::table)
+    diesel::update(&*frame)
         .set(&*frame)
         .execute(connection)
         .expect("Failed to update frame");
