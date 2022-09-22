@@ -1,5 +1,3 @@
-use std::{marker::PhantomData, time::SystemTime};
-
 use crate::schema::*;
 use chrono::prelude::*;
 use diesel::{
@@ -8,12 +6,8 @@ use diesel::{
     serialize::{IsNull, ToSql},
     sql_types::Text,
     sqlite::Sqlite,
-    AppearsOnTable, AsChangeset, AsExpression, Expression, FromSqlRow, Identifiable, Insertable,
-    Queryable, Selectable, SqlType,
+    AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable,
 };
-
-#[repr(transparent)]
-struct ID<T>(i32, PhantomData<T>);
 
 #[derive(Queryable, Identifiable, AsChangeset)]
 pub struct Frame {
@@ -91,11 +85,11 @@ impl Timestamp {
         Self(time)
     }
 
-    pub fn to_local(&self) -> DateTime<Local> {
+    pub fn to_local(self) -> DateTime<Local> {
         self.0.into()
     }
 
-    pub fn to_naive(&self) -> NaiveDateTime {
+    pub fn to_naive(self) -> NaiveDateTime {
         self.0.naive_local()
     }
 }

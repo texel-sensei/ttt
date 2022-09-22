@@ -1,14 +1,9 @@
-use std::{
-    env,
-    error::Error,
-    io::{stdin, Read}, fs::create_dir_all,
-};
+use std::{env, error::Error, fs::create_dir_all};
 
-use chrono::NaiveDateTime;
 use clap::{Parser, Subcommand};
-use diesel::{connection, prelude::*, Connection, Queryable, SqliteConnection};
+use diesel::{prelude::*, Connection, SqliteConnection};
 use dotenvy::dotenv;
-use inquire::{Confirm, CustomType, DateSelect, MultiSelect, Select};
+use inquire::{Confirm, CustomType, DateSelect, Select};
 
 use directories::ProjectDirs;
 
@@ -24,25 +19,23 @@ use crate::{model::NewFrame, schema::frames};
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 pub fn establish_connection() -> SqliteConnection {
-    let database_url;
-
-    if cfg!(debug_assertions) {
+    let database_url = if cfg!(debug_assertions) {
         dotenv().ok();
 
-        database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        env::var("DATABASE_URL").expect("DATABASE_URL must be set")
     } else {
         let dirs = ProjectDirs::from("", "", "ttt").expect("Failed to get base directory paths!");
         let data_folder = dirs.data_dir();
 
         create_dir_all(data_folder)
-            .expect(&format!("Failed to create data dir '{}'", data_folder.display()));
+            .unwrap_or_else(|_| panic!("Failed to create data dir '{}'", data_folder.display()));
 
-        database_url = data_folder
+        data_folder
             .join("timetable.db")
             .to_str()
             .expect("Sorry non UTF-8 data directory names are not supported!")
-            .to_owned();
-    }
+            .to_owned()
+    };
 
     let mut connection = SqliteConnection::establish(&database_url)
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
@@ -126,7 +119,7 @@ fn get_current_frame(connection: &mut SqliteConnection) -> Option<Frame> {
 fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
     use crate::schema::projects::dsl::*;
     let now = Timestamp::now();
-    frame.end = Some(now.clone());
+    frame.end = Some(now);
     diesel::update(&*frame)
         .set(&*frame)
         .execute(connection)
@@ -136,7 +129,7 @@ fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
         .load::<Project>(connection)
         .expect("Failed to query database")
         .pop()
-        .expect(&format!("Found no project for id {}", frame.id));
+        .unwrap_or_else(|| panic!("Found no project for id {}", frame.id));
     let task = &project.name;
     let duration = frame.end.unwrap().0 - frame.start.0;
     project.last_access_time = now;
