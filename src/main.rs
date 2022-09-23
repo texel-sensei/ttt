@@ -116,6 +116,56 @@ fn get_current_frame(connection: &mut SqliteConnection) -> Option<Frame> {
     current.ok().and_then(|mut f| f.pop())
 }
 
+trait DurationExt {
+    fn format(&self) -> String;
+}
+
+impl DurationExt for chrono::Duration {
+    fn format(&self) -> String {
+        use std::fmt::Write as _;
+        let mut mydur = *self;
+        let mut result = String::new();
+
+        let n = mydur.num_weeks();
+        if n > 0 {
+            let _ = write!(result, "{}w", n);
+            mydur = mydur - Self::weeks(n);
+        }
+        let n = mydur.num_days();
+        if n > 0 {
+            if !result.is_empty() {
+                result.push(' ');
+            }
+            let _ = write!(result, "{}d", n);
+            mydur = mydur - Self::days(n);
+        }
+        let n = mydur.num_hours();
+        if n > 0 {
+            if !result.is_empty() {
+                result.push(' ');
+            }
+            let _ = write!(result, "{}h", n);
+            mydur = mydur - Self::hours(n);
+        }
+        let n = mydur.num_minutes();
+        if n > 0 {
+            if !result.is_empty() {
+                result.push(' ');
+            }
+            let _ = write!(result, "{}min", n);
+            mydur = mydur - Self::minutes(n);
+        }
+        let n = mydur.num_seconds();
+        if n > 0 {
+            if !result.is_empty() {
+                result.push(' ');
+            }
+            let _ = write!(result, "{}s", n);
+        }
+        result
+    }
+}
+
 fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
     use crate::schema::projects::dsl::*;
     let now = Timestamp::now();
@@ -138,7 +188,7 @@ fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
         .execute(connection)
         .expect("Failed to update project access time");
 
-    println!("Tracked time for Task {}: {}", task, duration);
+    println!("Tracked time for Task {}: {}", task, duration.format());
 }
 
 fn main() {
