@@ -235,9 +235,9 @@ fn list_frames(connection: &mut SqliteConnection, span: TimeSpan) {
 }
 
 fn main() {
+    let cli = Cli::parse();
     let connection = &mut establish_connection();
 
-    let cli = Cli::parse();
     match cli.action {
         Action::Start => {
             if let Some(mut current) = get_current_frame(connection) {
