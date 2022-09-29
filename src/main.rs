@@ -82,7 +82,9 @@ enum Action {
     Analyze(AnalyzeOptions),
 }
 
-fn do_inquire_stuff() -> Result<(), Box<dyn Error>> {
+type TimeSpan = (Timestamp, Timestamp);
+
+fn do_inquire_stuff() -> Result<TimeSpan, Box<dyn Error>> {
     let begin = DateSelect::new("Enter start date");
     let begin = begin.prompt()?;
     let end = DateSelect::new("Enter end date").with_min_date(begin);
@@ -90,7 +92,7 @@ fn do_inquire_stuff() -> Result<(), Box<dyn Error>> {
 
     let precise_mode = Confirm::new("Do you want to enter start/end times?").prompt()?;
 
-    if precise_mode {
+    let (start_time, end_time) = if precise_mode {
         let start_time: chrono::naive::NaiveTime = CustomType::new("Enter start time").prompt()?;
         let end_time: chrono::naive::NaiveTime = CustomType::new("Enter end time")
             .with_parser(&|text| {
@@ -102,12 +104,18 @@ fn do_inquire_stuff() -> Result<(), Box<dyn Error>> {
             })
             .with_error_message(&format!("Enter a valid time that's after {start_time}!"))
             .prompt()?;
+        (start_time, end_time)
+    } else {
+        use chrono::NaiveTime;
+        (
+            NaiveTime::from_hms(0, 0, 0),
+            NaiveTime::from_hms(23, 59, 59),
+        )
+    };
 
-        println!("{start_time} -> {end_time}");
-    }
-
-    println!("Time span: {}", end - begin);
-    Ok(())
+    let begin = Timestamp::from_naive(begin.and_time(start_time));
+    let end = Timestamp::from_naive(end.and_time(end_time));
+    Ok((begin, end))
 }
 
 fn get_current_frame(connection: &mut SqliteConnection) -> Option<Frame> {
@@ -191,6 +199,37 @@ fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
     println!("Tracked time for Task {}: {}", task, duration.format());
 }
 
+fn list_frames(connection: &mut SqliteConnection, start: Timestamp, end: Timestamp) {
+    assert!(start < end);
+    let data = frames::table
+        .inner_join(projects::table)
+        .select((frames::start, frames::end, projects::name))
+        .filter(frames::end.ge(start))
+        .or_filter(frames::end.is_null())
+        .filter(frames::start.lt(end))
+        .load::<(Timestamp, Option<Timestamp>, String)>(connection)
+        .expect("Will definitely go wrong");
+
+    for (start, end, name) in data {
+        if let Some(end) = end {
+            println!(
+                "{}: {} -> {} ({})",
+                name,
+                start.0,
+                end.0,
+                (end.0 - start.0).format()
+            );
+        } else {
+            println!(
+                "{}: {} -> now ({})",
+                name,
+                start.0,
+                start.elapsed().format()
+            );
+        }
+    }
+}
+
 fn main() {
     let connection = &mut establish_connection();
 
@@ -257,11 +296,16 @@ fn main() {
                 .expect("Error creating project");
         }
         Action::Analyze(options) => {
-            if options.is_interactive() {
-                do_inquire_stuff().unwrap();
+            let (start, end) = if options.is_interactive() {
+                do_inquire_stuff().unwrap()
             } else {
-                println!("No activities since yesterday, since we didn't implement tracking yet!");
-            }
+                // todo: handle commandline options in detail, assuming "since_yesterday" for now
+                let end = Timestamp::now();
+                let start = Timestamp(end.0 - chrono::Duration::days(1));
+                (start, end)
+            };
+
+            list_frames(connection, start, end);
         }
     }
 }

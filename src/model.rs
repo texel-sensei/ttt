@@ -85,11 +85,24 @@ impl Timestamp {
         Self(time)
     }
 
+    pub fn from_naive(time: NaiveDateTime) -> Self {
+        let local_time = chrono::Local::now();
+        let tz = chrono::FixedOffset::east(local_time.offset().local_minus_utc());
+        Timestamp(chrono::DateTime::<chrono::FixedOffset>::from_local(
+            time, tz,
+        ))
+    }
+
     pub fn to_local(self) -> DateTime<Local> {
         self.0.into()
     }
 
     pub fn to_naive(self) -> NaiveDateTime {
         self.0.naive_local()
+    }
+
+    /// Returns the elapsed time from this timestamp till now.
+    pub fn elapsed(&self) -> chrono::Duration {
+        Self::now().0 - self.0
     }
 }
