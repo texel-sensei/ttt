@@ -199,8 +199,12 @@ fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
     println!("Tracked time for Task {}: {}", task, duration.format());
 }
 
-fn list_frames(connection: &mut SqliteConnection, start: Timestamp, end: Timestamp) {
+fn list_frames(connection: &mut SqliteConnection, span: TimeSpan) {
+    let (start, end) = span;
+
+    // TODO(texel, 2022-09-29): Remove this assert once the TimeSpan type guarantees that fact
     assert!(start < end);
+
     let data = frames::table
         .inner_join(projects::table)
         .select((frames::start, frames::end, projects::name))
@@ -296,7 +300,7 @@ fn main() {
                 .expect("Error creating project");
         }
         Action::Analyze(options) => {
-            let (start, end) = if options.is_interactive() {
+            let span = if options.is_interactive() {
                 do_inquire_stuff().unwrap()
             } else {
                 // todo: handle commandline options in detail, assuming "since_yesterday" for now
@@ -305,7 +309,7 @@ fn main() {
                 (start, end)
             };
 
-            list_frames(connection, start, end);
+            list_frames(connection, span);
         }
     }
 }
