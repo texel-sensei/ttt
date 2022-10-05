@@ -3,7 +3,7 @@ use std::{env, error::Error, fs::create_dir_all};
 use clap::{Parser, Subcommand};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use dotenvy::dotenv;
-use inquire::{Confirm, CustomType, DateSelect, Select};
+use inquire::{Confirm, CustomType, DateSelect, Select, MultiSelect};
 
 use directories::ProjectDirs;
 
@@ -11,10 +11,10 @@ mod model;
 mod schema;
 
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use model::{Frame, NewProject, Project, Timestamp};
-use schema::projects;
+use model::{Frame, NewProject, NewTag, Project, Timestamp};
+use schema::{projects, tags};
 
-use crate::{model::NewFrame, schema::frames};
+use crate::{model::{NewFrame, Tag}, schema::frames};
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -74,9 +74,14 @@ enum Action {
     /// Stop tracking the current activity
     Stop,
 
-    NewProject {
-        name: String,
-    },
+    /// Add a project
+    NewProject { name: String },
+
+    /// Add a tag
+    NewTag { name: String },
+
+    /// Tag projects interactively
+    Tag,
 
     /// Analyze activities performed in a time frame
     Analyze(AnalyzeOptions),
@@ -234,6 +239,49 @@ fn list_frames(connection: &mut SqliteConnection, span: TimeSpan) {
     }
 }
 
+fn tag_inquire(connection: &mut SqliteConnection) {
+    use crate::schema::projects::dsl::*;
+    let mut possible_projects = projects
+        .filter(schema::projects::dsl::archived.eq(false))
+        .load::<Project>(connection)
+        .expect("Failed to query database");
+
+    possible_projects.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
+    if possible_projects.is_empty() {
+        println!("Please create a project before tagging.");
+        return;
+    }
+
+    use crate::schema::tags::dsl::*;
+    let mut possible_tags = tags
+        .filter(schema::tags::dsl::archived.eq(false))
+        .load::<Tag>(connection)
+        .expect("Failed to query database");
+
+    possible_tags.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
+    if possible_tags.is_empty() {
+        println!("Please create a tag before tagging.");
+        return;
+    }
+
+    let selected_projects = MultiSelect::new(
+        "Select the projects to tag",
+        possible_projects.iter().map(|p| &p.name).collect(),
+    )
+    .raw_prompt()
+    .unwrap();
+
+
+
+    let selected_tags = MultiSelect::new(
+        "Select the tags to apply to selected projects.",
+        possible_tags.iter().map(|p| &p.name).collect(),
+    )
+    .raw_prompt()
+    .unwrap();
+    todo!("Not yet implemented")
+}
+
 fn main() {
     let cli = Cli::parse();
     let connection = &mut establish_connection();
@@ -311,5 +359,16 @@ fn main() {
 
             list_frames(connection, span);
         }
+        Action::NewTag { name } => {
+            let new_tag = NewTag {
+                name: &name,
+                last_access_time: &Timestamp::now(),
+            };
+            diesel::insert_into(tags::table)
+                .values(&new_tag)
+                .execute(connection)
+                .expect("Error creating project");
+        }
+        Action::Tag => tag_inquire(connection),
     }
 }

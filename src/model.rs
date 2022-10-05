@@ -19,6 +19,14 @@ pub struct Frame {
     pub end: Option<Timestamp>,
 }
 
+#[derive(Queryable, Identifiable, AsChangeset)]
+pub struct Tag {
+    pub id: i32,
+    pub name: String,
+    pub archived: bool,
+    pub last_access_time: Timestamp,
+}
+
 #[derive(Queryable, Identifiable, AsChangeset, Debug)]
 pub struct Project {
     pub id: i32,
@@ -32,6 +40,20 @@ pub struct Project {
     /// Last time this project was used in a `Frame` (start or end).
     /// Can be used for sorting projects in LRU fashion.
     pub last_access_time: Timestamp,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = tags_per_project)]
+pub struct TagProject {
+    pub project_id: i32,
+    pub tag_id: i32,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = tags)]
+pub struct NewTag<'a> {
+    pub name: &'a str,
+    pub last_access_time: &'a Timestamp,
 }
 
 #[derive(Insertable)]
