@@ -3,7 +3,7 @@ use std::{env, error::Error, fs::create_dir_all};
 use clap::{Parser, Subcommand};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use dotenvy::dotenv;
-use inquire::{Confirm, CustomType, DateSelect, Select, MultiSelect};
+use inquire::{Confirm, CustomType, DateSelect, MultiSelect, Select};
 
 use directories::ProjectDirs;
 
@@ -14,7 +14,10 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use model::{Frame, NewProject, NewTag, Project, Timestamp};
 use schema::{projects, tags};
 
-use crate::{model::{NewFrame, Tag}, schema::frames};
+use crate::{
+    model::{HasAccessTime, NewFrame, Tag},
+    schema::frames,
+};
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -193,14 +196,13 @@ fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
         .expect("Failed to query database")
         .pop()
         .unwrap_or_else(|| panic!("Found no project for id {}", frame.id));
-    let task = &project.name;
     let duration = frame.end.unwrap().0 - frame.start.0;
-    project.last_access_time = now;
-    diesel::update(&project)
-        .set(&project)
-        .execute(connection)
+
+    project
+        .touch(connection, &now)
         .expect("Failed to update project access time");
 
+    let task = &project.name;
     println!("Tracked time for Task {}: {}", task, duration.format());
 }
 
@@ -271,8 +273,6 @@ fn tag_inquire(connection: &mut SqliteConnection) {
     .raw_prompt()
     .unwrap();
 
-
-
     let selected_tags = MultiSelect::new(
         "Select the tags to apply to selected projects.",
         possible_tags.iter().map(|p| &p.name).collect(),
@@ -324,10 +324,8 @@ fn main() {
                 .execute(connection)
                 .expect("Failed to insert frame into database");
 
-            selected_project.last_access_time = now;
-            diesel::update(&*selected_project)
-                .set(&*selected_project)
-                .execute(connection)
+            selected_project
+                .touch(connection, &now)
                 .expect("Failed to update project access time");
         }
         Action::Stop => {
