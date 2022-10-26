@@ -3,7 +3,11 @@ use std::{env, error::Error, fs::create_dir_all};
 use clap::{Parser, Subcommand};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use dotenvy::dotenv;
-use inquire::{Confirm, CustomType, DateSelect, MultiSelect, Select};
+use inquire::{
+    list_option::ListOption, validator::Validation, Confirm, CustomType, DateSelect, MultiSelect,
+    Select,
+};
+use itertools::iproduct;
 
 use directories::ProjectDirs;
 
@@ -15,8 +19,8 @@ use model::{Frame, NewProject, NewTag, Project, Timestamp};
 use schema::{projects, tags};
 
 use crate::{
-    model::{HasAccessTime, NewFrame, Tag},
-    schema::frames,
+    model::{HasAccessTime, NewFrame, Tag, TagProject},
+    schema::{frames, tags_per_project},
 };
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -266,20 +270,62 @@ fn tag_inquire(connection: &mut SqliteConnection) {
         return;
     }
 
-    let selected_projects = MultiSelect::new(
+    let validator = |input: &[ListOption<&&String>]| {
+        if input.is_empty() {
+            Ok(Validation::Invalid("Select at least one element".into()))
+        } else {
+            Ok(Validation::Valid)
+        }
+    };
+
+    let selected_projects: Vec<_> = MultiSelect::new(
         "Select the projects to tag",
         possible_projects.iter().map(|p| &p.name).collect(),
     )
+    .with_validator(validator)
     .raw_prompt()
-    .unwrap();
+    .unwrap()
+    .into_iter()
+    .map(|item| item.index)
+    .collect();
 
-    let selected_tags = MultiSelect::new(
+    let selected_tags: Vec<_> = MultiSelect::new(
         "Select the tags to apply to selected projects.",
         possible_tags.iter().map(|p| &p.name).collect(),
     )
+    .with_validator(validator)
     .raw_prompt()
-    .unwrap();
-    todo!("Not yet implemented")
+    .unwrap()
+    .into_iter()
+    .map(|item| item.index)
+    .collect();
+
+    // TODO(texel, 2022-10-26): Optimize to use a single update statement
+    for selected in &selected_projects {
+        possible_projects[*selected]
+            .touch_now(connection)
+            .expect("Failed to update access time");
+    }
+    for selected in &selected_tags {
+        possible_tags[*selected]
+            .touch_now(connection)
+            .expect("Failed to update access time");
+    }
+
+    let selected_projects = selected_projects.into_iter().map(|i| &possible_projects[i]);
+    let selected_tags = selected_tags.into_iter().map(|i| &possible_tags[i]);
+
+    let combination: Vec<_> = iproduct!(selected_projects, selected_tags)
+        .map(|(p, t)| TagProject {
+            project_id: p.id,
+            tag_id: t.id,
+        })
+        .collect();
+
+    diesel::insert_or_ignore_into(tags_per_project::table)
+        .values(combination)
+        .execute(connection)
+        .expect("Failed to store tags in database");
 }
 
 fn main() {
