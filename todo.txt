@@ -1,0 +1,38 @@
+ttt start: non interactive mode with project name; Fail if project does not exist
+
+Add ttt current: Show currently running project; Status code != 0 if nothing is running
+
+Add ttt list projects: Returns list of projects; Optionally with tags and archived
+
+Add ttt list tags: Returns a list of tags; Optionally with archived
+
+Commands with user input should use inqure xor cli
+
+Add ttt delete <what>: Delete <what>
+
+Add ttt edit <what>: Add <what>
+
+<what>: Frames, Tag, Projects
+
+Add ttt import: Allow import from other programms, e.g. Hamster, or Zeiterfassung
+
+Add ttt export: Export the database into json
+
+Add ttt backup <path>: Create a backup of the database
+
+Add ttt backup restore: Read a ttt backup file
+
+Everything should be able to output json.
+
+Add analysis functions:
+
+Show daily, weekly, monthly or customizable taskmatrix
+
+========================================
+Tasks between 12.05.2000 and 14.05.2000
+Task A: 10h
+Task B: 9h
+Task C: 15h
+========================================
+
+
