@@ -1,4 +1,4 @@
-use std::{env, error::Error, fs::create_dir_all};
+use std::{env, error::Error, fs::create_dir_all, process::ExitCode};
 
 use clap::{Parser, Subcommand};
 use diesel::{prelude::*, Connection, SqliteConnection};
@@ -80,6 +80,9 @@ enum Action {
 
     /// Stop tracking the current activity
     Stop,
+
+    /// Print the current project
+    Current,
 
     /// Add a project
     NewProject { name: String },
@@ -328,7 +331,7 @@ fn tag_inquire(connection: &mut SqliteConnection) {
         .expect("Failed to store tags in database");
 }
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
     let connection = &mut establish_connection();
 
@@ -346,7 +349,7 @@ fn main() {
             possible_projects.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
             if possible_projects.is_empty() {
                 println!("Please create a project before starting a task.");
-                return;
+                return ExitCode::FAILURE;
             }
 
             let selected_project = Select::new(
@@ -414,5 +417,20 @@ fn main() {
                 .expect("Error creating project");
         }
         Action::Tag => tag_inquire(connection),
+        Action::Current => {
+            let Some(current) = get_current_frame(connection) else {return ExitCode::FAILURE};
+            use crate::schema::projects::dsl::*;
+            let project = projects
+                .filter(id.eq(current.project))
+                .load::<Project>(connection)
+                .expect("Failed to query database")
+                .pop()
+                .unwrap_or_else(|| panic!("Found no project for id {}", current.id));
+
+            let task = &project.name;
+            println!("{}: {}", task, current.start.elapsed().format());
+        }
     }
+
+    ExitCode::SUCCESS
 }
