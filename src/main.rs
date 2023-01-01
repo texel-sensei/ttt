@@ -1,57 +1,29 @@
-use std::{env, error::Error, fs::create_dir_all, process::ExitCode};
+use std::{error::Error, process::ExitCode};
 
 use clap::{Parser, Subcommand};
-use diesel::{prelude::*, Connection, SqliteConnection};
-use dotenvy::dotenv;
+use diesel::{prelude::*, SqliteConnection};
 use inquire::{
     list_option::ListOption, validator::Validation, Confirm, CustomType, DateSelect, MultiSelect,
     Select,
 };
 use itertools::iproduct;
 
-use directories::ProjectDirs;
 
 mod model;
 mod schema;
+mod database;
+pub mod error;
 
-use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+
 use model::{Frame, NewProject, NewTag, Project, Timestamp};
 use schema::{projects, tags};
 
 use crate::{
     model::{HasAccessTime, NewFrame, Tag, TagProject},
     schema::{frames, tags_per_project},
+    database::establish_connection,
 };
 
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
-
-pub fn establish_connection() -> SqliteConnection {
-    let database_url = if cfg!(debug_assertions) {
-        dotenv().ok();
-
-        env::var("DATABASE_URL").expect("DATABASE_URL must be set")
-    } else {
-        let dirs = ProjectDirs::from("", "", "ttt").expect("Failed to get base directory paths!");
-        let data_folder = dirs.data_dir();
-
-        create_dir_all(data_folder)
-            .unwrap_or_else(|_| panic!("Failed to create data dir '{}'", data_folder.display()));
-
-        data_folder
-            .join("timetable.db")
-            .to_str()
-            .expect("Sorry non UTF-8 data directory names are not supported!")
-            .to_owned()
-    };
-
-    let mut connection = SqliteConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
-
-    use diesel_migrations::MigrationHarness;
-    connection.run_pending_migrations(MIGRATIONS).unwrap();
-
-    connection
-}
 
 #[derive(Parser)]
 struct Cli {
@@ -333,7 +305,7 @@ fn tag_inquire(connection: &mut SqliteConnection) {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let connection = &mut establish_connection();
+    let connection = &mut establish_connection().unwrap();
 
     match cli.action {
         Action::Start => {
