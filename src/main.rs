@@ -1,29 +1,21 @@
 use std::{error::Error, process::ExitCode};
 
 use clap::{Parser, Subcommand};
-use diesel::{prelude::*, SqliteConnection};
+use database::{ArchivedState, Database};
 use inquire::{
     list_option::ListOption, validator::Validation, Confirm, CustomType, DateSelect, MultiSelect,
     Select,
 };
-use itertools::iproduct;
 
-
-mod model;
-mod schema;
 mod database;
 pub mod error;
-
-
-use model::{Frame, NewProject, NewTag, Project, Timestamp};
-use schema::{projects, tags};
+mod model;
+mod schema;
 
 use crate::{
-    model::{HasAccessTime, NewFrame, Tag, TagProject},
-    schema::{frames, tags_per_project},
-    database::establish_connection,
+    database::TimeSpan,
+    model::{Frame, Timestamp},
 };
-
 
 #[derive(Parser)]
 struct Cli {
@@ -69,8 +61,6 @@ enum Action {
     Analyze(AnalyzeOptions),
 }
 
-type TimeSpan = (Timestamp, Timestamp);
-
 fn do_inquire_stuff() -> Result<TimeSpan, Box<dyn Error>> {
     let begin = DateSelect::new("Enter start date");
     let begin = begin.prompt()?;
@@ -103,12 +93,6 @@ fn do_inquire_stuff() -> Result<TimeSpan, Box<dyn Error>> {
     let begin = Timestamp::from_naive(begin.and_time(start_time));
     let end = Timestamp::from_naive(end.and_time(end_time));
     Ok((begin, end))
-}
-
-fn get_current_frame(connection: &mut SqliteConnection) -> Option<Frame> {
-    use crate::schema::frames::dsl::*;
-    let current = frames.filter(end.is_null()).load::<Frame>(connection);
-    current.ok().and_then(|mut f| f.pop())
 }
 
 trait DurationExt {
@@ -161,85 +145,59 @@ impl DurationExt for chrono::Duration {
     }
 }
 
-fn stop_frame(connection: &mut SqliteConnection, frame: &mut Frame) {
-    use crate::schema::projects::dsl::*;
-    let now = Timestamp::now();
-    frame.end = Some(now);
-    diesel::update(&*frame)
-        .set(&*frame)
-        .execute(connection)
-        .expect("Failed to update frame");
-    let mut project = projects
-        .filter(id.eq(frame.project))
-        .load::<Project>(connection)
-        .expect("Failed to query database")
-        .pop()
-        .unwrap_or_else(|| panic!("Found no project for id {}", frame.id));
-    let duration = frame.end.unwrap().0 - frame.start.0;
+fn stop_current_frame(db: &mut Database) -> Option<Frame> {
+    if let Some(current) = db.stop().expect("Database is broken") {
+        let duration = current.end.unwrap().0 - current.start.0;
+        let project = db.lookup_project(current.project).expect("Database is broken").unwrap();
 
-    project
-        .touch(connection, &now)
-        .expect("Failed to update project access time");
+        println!(
+            "Tracked time for Task {}: {}",
+            project.name,
+            duration.format()
+        );
 
-    let task = &project.name;
-    println!("Tracked time for Task {}: {}", task, duration.format());
+        Some(current)
+    } else {
+        None
+    }
 }
 
-fn list_frames(connection: &mut SqliteConnection, span: TimeSpan) {
+fn list_frames(db: &mut Database, span: TimeSpan) {
     let (start, end) = span;
 
     // TODO(texel, 2022-09-29): Remove this assert once the TimeSpan type guarantees that fact
     assert!(start < end);
 
-    let data = frames::table
-        .inner_join(projects::table)
-        .select((frames::start, frames::end, projects::name))
-        .filter(frames::end.ge(start))
-        .or_filter(frames::end.is_null())
-        .filter(frames::start.lt(end))
-        .load::<(Timestamp, Option<Timestamp>, String)>(connection)
-        .expect("Will definitely go wrong");
+    let data = db.get_frames_in_span(span, ArchivedState::Both).expect("Database is broken");
 
-    for (start, end, name) in data {
-        if let Some(end) = end {
+    for (project, frame) in data {
+        if let Some(end) = frame.end {
             println!(
                 "{}: {} -> {} ({})",
-                name,
-                start.0,
+                project.name,
+                frame.start.0,
                 end.0,
-                (end.0 - start.0).format()
+                (end.0 - frame.start.0).format()
             );
         } else {
             println!(
                 "{}: {} -> now ({})",
-                name,
-                start.0,
-                start.elapsed().format()
+                project.name,
+                frame.start.0,
+                frame.start.elapsed().format()
             );
         }
     }
 }
 
-fn tag_inquire(connection: &mut SqliteConnection) {
-    use crate::schema::projects::dsl::*;
-    let mut possible_projects = projects
-        .filter(schema::projects::dsl::archived.eq(false))
-        .load::<Project>(connection)
-        .expect("Failed to query database");
-
-    possible_projects.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
+fn tag_inquire(database: &mut Database) {
+    let mut possible_projects = database.all_projects(ArchivedState::NotArchived).expect("Database is broken");
     if possible_projects.is_empty() {
         println!("Please create a project before tagging.");
         return;
     }
 
-    use crate::schema::tags::dsl::*;
-    let mut possible_tags = tags
-        .filter(schema::tags::dsl::archived.eq(false))
-        .load::<Tag>(connection)
-        .expect("Failed to query database");
-
-    possible_tags.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
+    let mut possible_tags = database.all_tags(ArchivedState::NotArchived).expect("Database is broken");
     if possible_tags.is_empty() {
         println!("Please create a tag before tagging.");
         return;
@@ -275,50 +233,23 @@ fn tag_inquire(connection: &mut SqliteConnection) {
     .map(|item| item.index)
     .collect();
 
-    // TODO(texel, 2022-10-26): Optimize to use a single update statement
-    for selected in &selected_projects {
-        possible_projects[*selected]
-            .touch_now(connection)
-            .expect("Failed to update access time");
-    }
-    for selected in &selected_tags {
-        possible_tags[*selected]
-            .touch_now(connection)
-            .expect("Failed to update access time");
-    }
-
-    let selected_projects = selected_projects.into_iter().map(|i| &possible_projects[i]);
-    let selected_tags = selected_tags.into_iter().map(|i| &possible_tags[i]);
-
-    let combination: Vec<_> = iproduct!(selected_projects, selected_tags)
-        .map(|(p, t)| TagProject {
-            project_id: p.id,
-            tag_id: t.id,
-        })
-        .collect();
-
-    diesel::insert_or_ignore_into(tags_per_project::table)
-        .values(combination)
-        .execute(connection)
-        .expect("Failed to store tags in database");
+    database
+        .tag_projects(
+            pick(&mut possible_tags, &selected_tags),
+            pick(&mut possible_projects, &selected_projects),
+        )
+        .expect("Could not tag projects.");
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let connection = &mut establish_connection().unwrap();
+    let mut database = Database::new().unwrap();
 
     match cli.action {
         Action::Start => {
-            if let Some(mut current) = get_current_frame(connection) {
-                stop_frame(connection, &mut current)
-            }
-            use crate::schema::projects::dsl::*;
-            let mut possible_projects = projects
-                .filter(archived.eq(false))
-                .load::<Project>(connection)
-                .expect("Failed to query database");
+            let _ = stop_current_frame(&mut database);
 
-            possible_projects.sort_by(|a, b| b.last_access_time.cmp(&a.last_access_time));
+            let mut possible_projects = database.all_projects(ArchivedState::NotArchived).expect("Database is broken");
             if possible_projects.is_empty() {
                 println!("Please create a project before starting a task.");
                 return ExitCode::FAILURE;
@@ -334,36 +265,20 @@ fn main() -> ExitCode {
             let index = selected_project.index;
             let selected_project = &mut possible_projects[index];
 
-            let now = Timestamp::now();
-            let frame = NewFrame {
-                project: selected_project.id,
-                start: &now,
-                end: None,
-            };
-            diesel::insert_into(frames::table)
-                .values(&frame)
-                .execute(connection)
-                .expect("Failed to insert frame into database");
-
-            selected_project
-                .touch(connection, &now)
-                .expect("Failed to update project access time");
+            database
+                .start(selected_project)
+                .expect("Failed to start project");
         }
         Action::Stop => {
-            if let Some(mut current) = get_current_frame(connection) {
-                stop_frame(connection, &mut current)
-            } else {
+            let stopped_something = stop_current_frame(&mut database).is_some();
+
+            if !stopped_something {
                 println!("Nothing to do!");
             }
         }
         Action::NewProject { name } => {
-            let new_project = NewProject {
-                name: &name,
-                last_access_time: &Timestamp::now(),
-            };
-            diesel::insert_into(projects::table)
-                .values(&new_project)
-                .execute(connection)
+            database
+                .create_project(&name)
                 .expect("Error creating project");
         }
         Action::Analyze(options) => {
@@ -376,28 +291,17 @@ fn main() -> ExitCode {
                 (start, end)
             };
 
-            list_frames(connection, span);
+            list_frames(&mut database, span);
         }
         Action::NewTag { name } => {
-            let new_tag = NewTag {
-                name: &name,
-                last_access_time: &Timestamp::now(),
-            };
-            diesel::insert_into(tags::table)
-                .values(&new_tag)
-                .execute(connection)
-                .expect("Error creating project");
+            database.create_tag(&name).expect("Error creating tag");
         }
-        Action::Tag => tag_inquire(connection),
+        Action::Tag => tag_inquire(&mut database),
         Action::Current => {
-            let Some(current) = get_current_frame(connection) else {return ExitCode::FAILURE};
-            use crate::schema::projects::dsl::*;
-            let project = projects
-                .filter(id.eq(current.project))
-                .load::<Project>(connection)
-                .expect("Failed to query database")
-                .pop()
-                .unwrap_or_else(|| panic!("Found no project for id {}", current.id));
+            let Ok(current) = database.current_frame() else {return ExitCode::FAILURE};
+            let project = database
+                .lookup_project(current.project).expect("Database is broken")
+                .unwrap_or_else(|| panic!("Found no project for id {}", current.id()));
 
             let task = &project.name;
             println!("{}: {}", task, current.start.elapsed().format());
@@ -405,4 +309,21 @@ fn main() -> ExitCode {
     }
 
     ExitCode::SUCCESS
+}
+
+fn pick<T>(items: &mut Vec<T>, idxs: &[usize]) -> Vec<T> {
+    // Move the items into a vector of Option<T> we can remove items from
+    // without reordering.
+    let mut opt_items: Vec<Option<T>> = items.drain(..).map(Some).collect();
+
+    // Take the items.
+    let picked: Vec<T> = idxs
+        .iter()
+        .map(|&i| opt_items[i].take().expect("duplicate index"))
+        .collect();
+
+    // Put the unpicked items back.
+    items.extend(opt_items.into_iter().flatten());
+
+    picked
 }

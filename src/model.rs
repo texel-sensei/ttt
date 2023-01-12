@@ -6,12 +6,12 @@ use diesel::{
     serialize::{IsNull, ToSql},
     sql_types::Text,
     sqlite::Sqlite,
-    AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable, SqliteConnection,
+    AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable,
 };
 
-#[derive(Queryable, Identifiable, AsChangeset, Debug)]
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
 pub struct Frame {
-    pub id: i32,
+    id: i32,
 
     pub project: i32,
 
@@ -19,17 +19,29 @@ pub struct Frame {
     pub end: Option<Timestamp>,
 }
 
-#[derive(Queryable, Identifiable, AsChangeset, Debug)]
+impl Frame {
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+}
+
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
 pub struct Tag {
-    pub id: i32,
+    id: i32,
     pub name: String,
     pub archived: bool,
     pub last_access_time: Timestamp,
 }
 
-#[derive(Queryable, Identifiable, AsChangeset, Debug)]
+impl Tag {
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+}
+
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
 pub struct Project {
-    pub id: i32,
+    id: i32,
     pub name: String,
 
     /// Whether this project can be selected in the UI or not.
@@ -42,54 +54,9 @@ pub struct Project {
     pub last_access_time: Timestamp,
 }
 
-/// Trait to model database objects that store their last access time,
-/// for example for sorting.
-pub trait HasAccessTime {
-    /// Update the last access time of this object to the given time.
-    /// This function updates the object itself and also the corresponding database entry.
-    fn touch(
-        &mut self,
-        connection: &mut SqliteConnection,
-        time: &Timestamp,
-    ) -> Result<(), diesel::result::Error>;
-
-    /// Update the last access time of this object to the current time.
-    fn touch_now(
-        &mut self,
-        connection: &mut SqliteConnection,
-    ) -> Result<(), diesel::result::Error> {
-        let t = Timestamp::now();
-        self.touch(connection, &t)
-    }
-}
-
-impl HasAccessTime for Project {
-    fn touch(
-        &mut self,
-        connection: &mut SqliteConnection,
-        time: &Timestamp,
-    ) -> Result<(), diesel::result::Error> {
-        self.last_access_time = *time;
-
-        use diesel::RunQueryDsl;
-        diesel::update(&*self).set(&*self).execute(connection)?;
-
-        Ok(())
-    }
-}
-
-impl HasAccessTime for Tag {
-    fn touch(
-        &mut self,
-        connection: &mut SqliteConnection,
-        time: &Timestamp,
-    ) -> Result<(), diesel::result::Error> {
-        self.last_access_time = *time;
-
-        use diesel::RunQueryDsl;
-        diesel::update(&*self).set(&*self).execute(connection)?;
-
-        Ok(())
+impl Project {
+    pub fn id(&self) -> i32 {
+        self.id
     }
 }
 
@@ -139,9 +106,9 @@ where
 }
 
 impl ToSql<Text, Sqlite> for Timestamp {
-    fn to_sql<'b>(
+    fn to_sql(
         &self,
-        out: &mut diesel::serialize::Output<'b, '_, Sqlite>,
+        out: &mut diesel::serialize::Output<'_, '_, Sqlite>,
     ) -> diesel::serialize::Result {
         let s = self.0.to_rfc3339();
         out.set_value(s);
