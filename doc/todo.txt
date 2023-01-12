@@ -33,4 +33,4 @@ Task B: 9h
 Task C: 15h
 ========================================
 
-
+Add option to get total time for single project
