@@ -95,8 +95,8 @@ fn do_inquire_stuff() -> Result<TimeSpan, Box<dyn Error>> {
     } else {
         use chrono::NaiveTime;
         (
-            NaiveTime::from_hms(0, 0, 0),
-            NaiveTime::from_hms(23, 59, 59),
+            NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+            NaiveTime::from_hms_opt(23, 59, 59).unwrap(),
         )
     };
 

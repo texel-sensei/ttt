@@ -152,15 +152,15 @@ impl ToSql<Text, Sqlite> for Timestamp {
 impl Timestamp {
     pub fn now() -> Self {
         let local_time = chrono::Local::now();
-        let time = local_time.with_timezone(&chrono::FixedOffset::east(
+        let time = local_time.with_timezone(&chrono::FixedOffset::east_opt(
             local_time.offset().local_minus_utc(),
-        ));
+        ).expect("Time offset out of bounds"));
         Self(time)
     }
 
     pub fn from_naive(time: NaiveDateTime) -> Self {
         let local_time = chrono::Local::now();
-        let tz = chrono::FixedOffset::east(local_time.offset().local_minus_utc());
+        let tz = chrono::FixedOffset::east_opt(local_time.offset().local_minus_utc()).expect("Time offset out of bounds");
         Timestamp(chrono::DateTime::<chrono::FixedOffset>::from_local(
             time, tz,
         ))
