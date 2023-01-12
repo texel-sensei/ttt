@@ -9,7 +9,7 @@ use diesel::{
     AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable, SqliteConnection,
 };
 
-#[derive(Queryable, Identifiable, AsChangeset)]
+#[derive(Queryable, Identifiable, AsChangeset, Debug)]
 pub struct Frame {
     pub id: i32,
 
@@ -19,7 +19,7 @@ pub struct Frame {
     pub end: Option<Timestamp>,
 }
 
-#[derive(Queryable, Identifiable, AsChangeset)]
+#[derive(Queryable, Identifiable, AsChangeset, Debug)]
 pub struct Tag {
     pub id: i32,
     pub name: String,
@@ -93,28 +93,28 @@ impl HasAccessTime for Tag {
     }
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Debug)]
 #[diesel(table_name = tags_per_project)]
 pub struct TagProject {
     pub project_id: i32,
     pub tag_id: i32,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Debug)]
 #[diesel(table_name = tags)]
 pub struct NewTag<'a> {
     pub name: &'a str,
     pub last_access_time: &'a Timestamp,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Debug)]
 #[diesel(table_name = projects)]
 pub struct NewProject<'a> {
     pub name: &'a str,
     pub last_access_time: &'a Timestamp,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Debug)]
 #[diesel(table_name = frames)]
 pub struct NewFrame<'a> {
     pub project: i32,
@@ -152,15 +152,17 @@ impl ToSql<Text, Sqlite> for Timestamp {
 impl Timestamp {
     pub fn now() -> Self {
         let local_time = chrono::Local::now();
-        let time = local_time.with_timezone(&chrono::FixedOffset::east_opt(
-            local_time.offset().local_minus_utc(),
-        ).expect("Time offset out of bounds"));
+        let time = local_time.with_timezone(
+            &chrono::FixedOffset::east_opt(local_time.offset().local_minus_utc())
+                .expect("Time offset out of bounds"),
+        );
         Self(time)
     }
 
     pub fn from_naive(time: NaiveDateTime) -> Self {
         let local_time = chrono::Local::now();
-        let tz = chrono::FixedOffset::east_opt(local_time.offset().local_minus_utc()).expect("Time offset out of bounds");
+        let tz = chrono::FixedOffset::east_opt(local_time.offset().local_minus_utc())
+            .expect("Time offset out of bounds");
         Timestamp(chrono::DateTime::<chrono::FixedOffset>::from_local(
             time, tz,
         ))
