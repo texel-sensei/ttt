@@ -98,7 +98,7 @@ where
     DB: Backend,
     *const str: FromSql<Text, DB>,
 {
-    fn from_sql(bytes: diesel::backend::RawValue<'_, DB>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: <DB as Backend>::RawValue<'_>) -> diesel::deserialize::Result<Self> {
         let text_ptr = <*const str as FromSql<Text, DB>>::from_sql(bytes)?;
         let text = unsafe { &*text_ptr };
         Ok(Timestamp(DateTime::parse_from_rfc3339(text)?))
