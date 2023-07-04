@@ -18,6 +18,7 @@ use crate::{
 };
 
 #[derive(Parser)]
+#[clap(author, version)]
 struct Cli {
     /// Action to perform
     #[clap(subcommand)]

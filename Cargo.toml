@@ -1,7 +1,8 @@
 [package]
 name = "ttt"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
+authors = ["texel <texelsensei@posteo.net>", "JohnDoe1112 <johndoe11@posteo.de>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
