@@ -145,24 +145,26 @@ impl Database {
         assert!(start < end);
 
         match include_archived {
-            state @ (ArchivedState::NotArchived | ArchivedState::OnlyArchived) => Ok(projects::table
-                            .inner_join(frames::table)
-                            .select((projects::all_columns, frames::all_columns))
-                            .filter(projects::archived.eq(matches!(state, ArchivedState::OnlyArchived)))
-                            .filter(frames::end.ge(start))
-                            .or_filter(frames::end.is_null())
-                            .filter(frames::start.lt(end))
-                            .order_by(frames::start)
-                            .load::<(Project, Frame)>(&mut self.connection)?),
+            state @ (ArchivedState::NotArchived | ArchivedState::OnlyArchived) => {
+                Ok(projects::table
+                    .inner_join(frames::table)
+                    .select((projects::all_columns, frames::all_columns))
+                    .filter(projects::archived.eq(matches!(state, ArchivedState::OnlyArchived)))
+                    .filter(frames::end.ge(start))
+                    .or_filter(frames::end.is_null())
+                    .filter(frames::start.lt(end))
+                    .order_by(frames::start)
+                    .load::<(Project, Frame)>(&mut self.connection)?)
+            }
 
             ArchivedState::Both => Ok(frames::table
-                            .inner_join(projects::table)
-                            .select((projects::all_columns, frames::all_columns))
-                            .filter(frames::end.ge(start))
-                            .or_filter(frames::end.is_null())
-                            .filter(frames::start.lt(end))
-                            .order_by(frames::start)
-                            .load::<(Project, Frame)>(&mut self.connection)?),
+                .inner_join(projects::table)
+                .select((projects::all_columns, frames::all_columns))
+                .filter(frames::end.ge(start))
+                .or_filter(frames::end.is_null())
+                .filter(frames::start.lt(end))
+                .order_by(frames::start)
+                .load::<(Project, Frame)>(&mut self.connection)?),
         }
     }
 
@@ -278,6 +280,15 @@ impl Database {
             .execute(&mut self.connection)?;
 
         Ok(())
+    }
+
+    /// Search the database for a project with the given name.
+    /// This function also returns archived projects.
+    pub fn lookup_project_by_name(&mut self, name: &str) -> Result<Option<Project>> {
+        Ok(projects::table
+            .filter(projects::name.eq(name))
+            .get_result(&mut self.connection)
+            .optional()?)
     }
 }
 

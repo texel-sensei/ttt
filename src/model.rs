@@ -9,7 +9,7 @@ use diesel::{
     AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable,
 };
 
-#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone)]
 pub struct Frame {
     id: i32,
 
@@ -25,7 +25,7 @@ impl Frame {
     }
 }
 
-#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone)]
 pub struct Tag {
     id: i32,
     pub name: String,
@@ -39,7 +39,7 @@ impl Tag {
     }
 }
 
-#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone)]
 pub struct Project {
     id: i32,
     pub name: String,

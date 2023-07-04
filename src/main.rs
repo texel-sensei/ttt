@@ -40,7 +40,11 @@ impl AnalyzeOptions {
 #[derive(Subcommand, Debug)]
 enum Action {
     /// Start tracking an activity
-    Start,
+    Start {
+        /// Name of the project to start. If no name is given, interactive mode is used to
+        /// determine the project.
+        name: Option<String>,
+    },
 
     /// Stop tracking the current activity
     Stop,
@@ -148,7 +152,10 @@ impl DurationExt for chrono::Duration {
 fn stop_current_frame(db: &mut Database) -> Option<Frame> {
     if let Some(current) = db.stop().expect("Database is broken") {
         let duration = current.end.unwrap().0 - current.start.0;
-        let project = db.lookup_project(current.project).expect("Database is broken").unwrap();
+        let project = db
+            .lookup_project(current.project)
+            .expect("Database is broken")
+            .unwrap();
 
         println!(
             "Tracked time for Task {}: {}",
@@ -168,7 +175,9 @@ fn list_frames(db: &mut Database, span: TimeSpan) {
     // TODO(texel, 2022-09-29): Remove this assert once the TimeSpan type guarantees that fact
     assert!(start < end);
 
-    let data = db.get_frames_in_span(span, ArchivedState::Both).expect("Database is broken");
+    let data = db
+        .get_frames_in_span(span, ArchivedState::Both)
+        .expect("Database is broken");
 
     for (project, frame) in data {
         if let Some(end) = frame.end {
@@ -191,13 +200,17 @@ fn list_frames(db: &mut Database, span: TimeSpan) {
 }
 
 fn tag_inquire(database: &mut Database) {
-    let mut possible_projects = database.all_projects(ArchivedState::NotArchived).expect("Database is broken");
+    let mut possible_projects = database
+        .all_projects(ArchivedState::NotArchived)
+        .expect("Database is broken");
     if possible_projects.is_empty() {
         println!("Please create a project before tagging.");
         return;
     }
 
-    let mut possible_tags = database.all_tags(ArchivedState::NotArchived).expect("Database is broken");
+    let mut possible_tags = database
+        .all_tags(ArchivedState::NotArchived)
+        .expect("Database is broken");
     if possible_tags.is_empty() {
         println!("Please create a tag before tagging.");
         return;
@@ -246,27 +259,49 @@ fn main() -> ExitCode {
     let mut database = Database::new().unwrap();
 
     match cli.action {
-        Action::Start => {
+        Action::Start { name } => {
+            let mut project = match name {
+                Some(name) => {
+                    let Some(selected) = database.lookup_project_by_name(&name).expect("Error querying the database.") else {
+                        eprintln!("Project {name} does not exist in this timeline ;)");
+                        return ExitCode::FAILURE;
+                    };
+                    if selected.archived {
+                        eprintln!("Project {name} is archived. Please remove the archived flag.");
+                        return ExitCode::FAILURE;
+                    }
+                    selected
+                }
+                None => {
+                    let possible_projects = database
+                        .all_projects(ArchivedState::NotArchived)
+                        .expect("Database is broken");
+                    if possible_projects.is_empty() {
+                        println!("Please create a project before starting a task.");
+                        return ExitCode::FAILURE;
+                    }
+                    let selected_project = Select::new(
+                        "Select the project to start",
+                        possible_projects.iter().map(|p| &p.name).collect(),
+                    )
+                    .raw_prompt();
+
+                    use inquire::InquireError::*;
+                    let selected_project = match selected_project {
+                        Ok(t) => t,
+                        Err(OperationCanceled | OperationInterrupted) => return ExitCode::SUCCESS,
+                        Err(err) => panic!("Failed to inquire project: {err}"),
+                    };
+
+                    let index = selected_project.index;
+                    possible_projects[index].clone()
+                }
+            };
+
             let _ = stop_current_frame(&mut database);
 
-            let mut possible_projects = database.all_projects(ArchivedState::NotArchived).expect("Database is broken");
-            if possible_projects.is_empty() {
-                println!("Please create a project before starting a task.");
-                return ExitCode::FAILURE;
-            }
-
-            let selected_project = Select::new(
-                "Select the project to start",
-                possible_projects.iter().map(|p| &p.name).collect(),
-            )
-            .raw_prompt()
-            .unwrap();
-
-            let index = selected_project.index;
-            let selected_project = &mut possible_projects[index];
-
             database
-                .start(selected_project)
+                .start(&mut project)
                 .expect("Failed to start project");
         }
         Action::Stop => {
@@ -300,7 +335,8 @@ fn main() -> ExitCode {
         Action::Current => {
             let Ok(current) = database.current_frame() else {return ExitCode::FAILURE};
             let project = database
-                .lookup_project(current.project).expect("Database is broken")
+                .lookup_project(current.project)
+                .expect("Database is broken")
                 .unwrap_or_else(|| panic!("Found no project for id {}", current.id()));
 
             let task = &project.name;

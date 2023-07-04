@@ -1,5 +1,3 @@
-ttt start: non interactive mode with project name; Fail if project does not exist
-
 Add ttt list projects: Returns list of projects; Optionally with tags and archived
 
 Add ttt list tags: Returns a list of tags; Optionally with archived
