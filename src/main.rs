@@ -304,6 +304,7 @@ fn main() -> ExitCode {
             database
                 .start(&mut project)
                 .expect("Failed to start project");
+            println!("Started project {}", project.name);
         }
         Action::Stop => {
             let stopped_something = stop_current_frame(&mut database).is_some();
@@ -316,6 +317,7 @@ fn main() -> ExitCode {
             database
                 .create_project(&name)
                 .expect("Error creating project");
+            println!("Created project {name}");
         }
         Action::Analyze(options) => {
             let span = if options.is_interactive() {
@@ -331,6 +333,7 @@ fn main() -> ExitCode {
         }
         Action::NewTag { name } => {
             database.create_tag(&name).expect("Error creating tag");
+            println!("Created tag {name}");
         }
         Action::Tag => tag_inquire(&mut database),
         Action::Current => {
