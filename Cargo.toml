@@ -8,7 +8,7 @@ authors = ["texel <texelsensei@posteo.net>", "JohnDoe1112 <johndoe11@posteo.de>"
 
 [dependencies]
 chrono = { version = "0.4.22", features = ["serde"] }
-clap = { version = "3.2.17", features = ["derive"] }
+clap = { version = "4.3.11", features = ["derive"] }
 diesel = { version = "2.0.0", features = ["chrono", "sqlite", "serde_json", "returning_clauses_for_sqlite_3_35"] }
 diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
 directories = "4.0.1"
