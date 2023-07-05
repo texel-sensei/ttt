@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use diesel::{prelude::*, SqliteConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use directories::ProjectDirs;
@@ -290,11 +291,20 @@ impl Database {
             .get_result(&mut self.connection)
             .optional()?)
     }
+
+    /// Get all tags associated to the given project.
+    pub fn lookup_tags_for_project(&mut self, project_id: i32) -> Result<Vec<Tag>> {
+        Ok(tags::table
+            .inner_join(tags_per_project::table)
+            .filter(tags_per_project::project_id.eq(project_id))
+            .select(tags::all_columns)
+            .get_results(&mut self.connection)?)
+    }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ArchivedState {
     NotArchived,
-    #[allow(dead_code)]
     OnlyArchived,
     Both,
 }

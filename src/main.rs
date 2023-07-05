@@ -1,6 +1,6 @@
 use std::{error::Error, process::ExitCode};
 
-use clap::{Parser, Subcommand};
+use clap::{arg, Args, Parser, Subcommand};
 use database::{ArchivedState, Database};
 use inquire::{
     list_option::ListOption, validator::Validation, Confirm, CustomType, DateSelect, MultiSelect,
@@ -64,6 +64,35 @@ enum Action {
 
     /// Analyze activities performed in a time frame
     Analyze(AnalyzeOptions),
+
+    /// List available projects or tags.
+    #[command(subcommand)]
+    List(ListAction),
+}
+
+#[derive(Args, Debug)]
+struct ListArgs {
+    /// Whether to include archived objects or not
+    #[arg(
+        long,
+        num_args=0..=1,
+        default_value_t = ArchivedState::NotArchived,
+        default_missing_value="only-archived",
+        value_enum
+    )]
+    archived: ArchivedState,
+}
+
+#[derive(Subcommand, Debug)]
+enum ListAction {
+    Projects {
+        #[arg(long, default_value_t = false)]
+        with_tags: bool,
+
+        #[command(flatten)]
+        args: ListArgs,
+    },
+    Tags(ListArgs),
 }
 
 fn do_inquire_stuff() -> Result<TimeSpan, Box<dyn Error>> {
@@ -346,9 +375,46 @@ fn main() -> ExitCode {
             let task = &project.name;
             println!("{}: {}", task, current.start.elapsed().format());
         }
+        Action::List(action) => list(&mut database, action).expect("Database is broken"),
     }
 
     ExitCode::SUCCESS
+}
+
+fn list(db: &mut Database, action: ListAction) -> crate::error::Result<()> {
+    let to_print: Vec<_> = match action {
+        ListAction::Projects { args, with_tags } => db
+            .all_projects(args.archived)?
+            .into_iter()
+            .map(|p| {
+                if with_tags {
+                    let tags = db
+                        .lookup_tags_for_project(p.id())
+                        .expect("Database is broken");
+                    let tags: Vec<_> = tags.into_iter().map(|t| format!("+{}", t.name)).collect();
+                    let tags = tags.join(" ");
+                    if tags.is_empty() {
+                        format!("{}", p.name)
+                    } else {
+                        format!("{} {}", p.name, tags)
+                    }
+                } else {
+                    p.name
+                }
+            })
+            .collect(),
+        ListAction::Tags(args) => db
+            .all_tags(args.archived)?
+            .into_iter()
+            .map(|t| t.name)
+            .collect(),
+    };
+
+    for item in to_print {
+        println!("{item}");
+    }
+
+    Ok(())
 }
 
 fn pick<T>(items: &mut Vec<T>, idxs: &[usize]) -> Vec<T> {
