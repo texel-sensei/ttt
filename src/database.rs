@@ -300,6 +300,13 @@ impl Database {
             .select(tags::all_columns)
             .get_results(&mut self.connection)?)
     }
+
+    pub fn lookup_tag_by_name(&mut self, name: &str) -> Result<Option<Tag>> {
+        Ok(tags::table
+            .filter(tags::name.eq(name))
+            .get_result(&mut self.connection)
+            .optional()?)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

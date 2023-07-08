@@ -1,5 +1,3 @@
-Commands with user input should use inqure xor cli
-
 Add ttt delete <what>: Delete <what>
 
 Add ttt edit <what>: Add <what>

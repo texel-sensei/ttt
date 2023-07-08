@@ -3,8 +3,8 @@ use std::{error::Error, process::ExitCode};
 use clap::{arg, Args, Parser, Subcommand};
 use database::{ArchivedState, Database};
 use inquire::{
-    list_option::ListOption, validator::Validation, Confirm, CustomType, DateSelect, MultiSelect,
-    Select,
+    list_option::ListOption, validator::Validation, Confirm, CustomType, CustomUserError,
+    DateSelect, MultiSelect, Select,
 };
 
 mod database;
@@ -60,7 +60,10 @@ enum Action {
     NewTag { name: String },
 
     /// Tag projects interactively
-    Tag,
+    Tag {
+        project: Option<String>,
+        tags: Vec<String>,
+    },
 
     /// Analyze activities performed in a time frame
     Analyze(AnalyzeOptions),
@@ -229,6 +232,91 @@ fn list_frames(db: &mut Database, span: TimeSpan) {
     }
 }
 
+fn min_select_validator(input: &[ListOption<&&String>]) -> Result<Validation, CustomUserError> {
+    if input.is_empty() {
+        Ok(Validation::Invalid("Select at least one element".into()))
+    } else {
+        Ok(Validation::Valid)
+    }
+}
+
+fn tag_projects(database: &mut Database, project_name: &str, tag_names: &[String]) {
+    let Some(selected_project) = database.lookup_project_by_name(project_name).expect("Database is broken") else {
+        eprintln!("Project {project_name} seems to be missing from the database. Please add it before using it.");
+        std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
+                               // added.
+    };
+
+    if selected_project.archived {
+        eprintln!("Project {project_name} is archived. Please unarchive the project before using it.");
+        std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
+                               // added.
+    }
+
+    let tags: Vec<_> = tag_names.iter().map(|tag| {
+        let Some(selected_tag) = database.lookup_tag_by_name(tag).expect("Database is broken") else {
+            eprintln!("Tag {tag} seems to be missing from the database. Please add it before using it.");
+            std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
+                                   // added.
+        };
+
+        if selected_tag.archived {
+            eprintln!("Tag {tag} is archived. Please unarchive the tag before using it.");
+            std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
+                                   // added.
+        }
+        selected_tag
+
+    }).collect();
+
+    database
+        .tag_projects(
+            tags,
+            vec![selected_project],
+        )
+        .expect("Could not tag projects.");
+}
+
+fn tag_project_inquire(database: &mut Database, project: &str) {
+    let Some(selected_project) = database.lookup_project_by_name(project).expect("Database is broken") else {
+        eprintln!("Project {project} seems to be missing from the database. Please add it before using it.");
+        std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
+                               // added.
+    };
+
+    if selected_project.archived {
+        eprintln!("Project {project} is archived. Please unarchive the project before using it.");
+        std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
+                               // added.
+    }
+
+    let mut possible_tags = database
+        .all_tags(ArchivedState::NotArchived)
+        .expect("Database is broken");
+    if possible_tags.is_empty() {
+        println!("Please create a tag before tagging.");
+        return;
+    }
+
+    let selected_tags: Vec<_> = MultiSelect::new(
+        "Select the tags to apply to selected projects.",
+        possible_tags.iter().map(|p| &p.name).collect(),
+    )
+    .with_validator(min_select_validator)
+    .raw_prompt()
+    .unwrap()
+    .into_iter()
+    .map(|item| item.index)
+    .collect();
+
+    database
+        .tag_projects(
+            pick(&mut possible_tags, &selected_tags),
+            vec![selected_project],
+        )
+        .expect("Could not tag projects.");
+}
+
 fn tag_inquire(database: &mut Database) {
     let mut possible_projects = database
         .all_projects(ArchivedState::NotArchived)
@@ -246,19 +334,11 @@ fn tag_inquire(database: &mut Database) {
         return;
     }
 
-    let validator = |input: &[ListOption<&&String>]| {
-        if input.is_empty() {
-            Ok(Validation::Invalid("Select at least one element".into()))
-        } else {
-            Ok(Validation::Valid)
-        }
-    };
-
     let selected_projects: Vec<_> = MultiSelect::new(
         "Select the projects to tag",
         possible_projects.iter().map(|p| &p.name).collect(),
     )
-    .with_validator(validator)
+    .with_validator(min_select_validator)
     .raw_prompt()
     .unwrap()
     .into_iter()
@@ -269,7 +349,7 @@ fn tag_inquire(database: &mut Database) {
         "Select the tags to apply to selected projects.",
         possible_tags.iter().map(|p| &p.name).collect(),
     )
-    .with_validator(validator)
+    .with_validator(min_select_validator)
     .raw_prompt()
     .unwrap()
     .into_iter()
@@ -364,7 +444,12 @@ fn main() -> ExitCode {
             database.create_tag(&name).expect("Error creating tag");
             println!("Created tag {name}");
         }
-        Action::Tag => tag_inquire(&mut database),
+        Action::Tag { project, tags } => match (project, AsRef::<[String]>::as_ref(&tags)) {
+            (None, []) => tag_inquire(&mut database),
+            (Some(project), []) => tag_project_inquire(&mut database, &project),
+            (Some(project), tags) => tag_projects(&mut database, &project, tags),
+            (None, _) => unreachable!(),
+        },
         Action::Current => {
             let Ok(current) = database.current_frame() else {return ExitCode::FAILURE};
             let project = database
@@ -394,7 +479,7 @@ fn list(db: &mut Database, action: ListAction) -> crate::error::Result<()> {
                     let tags: Vec<_> = tags.into_iter().map(|t| format!("+{}", t.name)).collect();
                     let tags = tags.join(" ");
                     if tags.is_empty() {
-                        format!("{}", p.name)
+                        p.name
                     } else {
                         format!("{} {}", p.name, tags)
                     }
