@@ -73,7 +73,7 @@ impl Database {
     /// ```no_run
     /// # use ttt::database::Database;
     /// let mut db = Database::new().unwrap();
-    /// assert!(db.stop().is_none());
+    /// assert!(db.stop().unwrap().is_none());
     /// ```
     pub fn stop(&mut self) -> Result<Option<Frame>> {
         let mut frame = match self.current_frame() {

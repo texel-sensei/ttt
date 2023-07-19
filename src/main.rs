@@ -11,6 +11,7 @@ mod database;
 pub mod error;
 mod model;
 mod schema;
+mod timespan_parser;
 
 use crate::{
     database::TimeSpan,
@@ -248,7 +249,9 @@ fn tag_projects(database: &mut Database, project_name: &str, tag_names: &[String
     };
 
     if selected_project.archived {
-        eprintln!("Project {project_name} is archived. Please unarchive the project before using it.");
+        eprintln!(
+            "Project {project_name} is archived. Please unarchive the project before using it."
+        );
         std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
                                // added.
     }
@@ -270,10 +273,7 @@ fn tag_projects(database: &mut Database, project_name: &str, tag_names: &[String
     }).collect();
 
     database
-        .tag_projects(
-            tags,
-            vec![selected_project],
-        )
+        .tag_projects(tags, vec![selected_project])
         .expect("Could not tag projects.");
 }
 
