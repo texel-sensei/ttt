@@ -26,3 +26,5 @@ Task C: 15h
 ========================================
 
 Add option to get total time for single project
+
+Refactor: Instead of new-project and new-tag there should be one new command with tag/project as subcommands (similar to how list works). So `ttt new tag`.
