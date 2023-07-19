@@ -25,6 +25,23 @@ Task B: 9h
 Task C: 15h
 ========================================
 
+Time parser:
+
+> ttt summarize today
+> ttt summarize last week
+> ttt summarize this week
+> ttt summarize 2020-03 to 2023-07-03
+> ttt summarize last month
+> ttt summarize yesterday to today
+
+"today" means now
+The cutoff for "today" should be configurable, so e.g. 00:01 can still count as the previous day.
+
+Only XKCD 1179 conforming dates are accepted
+
+
 Add option to get total time for single project
 
 Refactor: Instead of new-project and new-tag there should be one new command with tag/project as subcommands (similar to how list works). So `ttt new tag`.
+
+Task matrix grouped by day
