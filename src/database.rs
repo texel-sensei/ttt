@@ -185,7 +185,7 @@ impl Database {
         connection.transaction(|connection| {
             use crate::schema::projects::dsl::*;
             let now = Timestamp::now();
-            for mut item in items {
+            for item in items {
                 item.last_access_time = now;
                 diesel::insert_into(projects)
                     .values(&*item)
@@ -235,7 +235,7 @@ impl Database {
         connection.transaction(|connection| {
             use crate::schema::tags::dsl::*;
             let now = Timestamp::now();
-            for mut item in items {
+            for item in items {
                 item.last_access_time = now;
                 diesel::insert_into(tags)
                     .values(&*item)
