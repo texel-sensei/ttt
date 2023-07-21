@@ -1,7 +1,57 @@
 #![allow(dead_code)] // TODO: Use code
 
+use chrono::{NaiveDateTime, NaiveTime};
+
+use crate::{database::TimeSpan, model::Timestamp};
+
+pub enum ParseError {
+    EmptyInput,
+    InvalidToken(String),
+    UnexpectedToken(String),
+}
+
+pub fn parse(text: &[impl AsRef<str>]) -> Result<TimeSpan, ParseError> {
+    use ParseError::*;
+    let mut tokens = tokenize(text).peekable();
+    let Some(token) = tokens.next() else {
+        return Err(EmptyInput);
+    };
+    match token {
+        Token::Day(0) if tokens.peek().is_some() => {
+            return Err(UnexpectedToken(format!(
+                "Unexpected token after 'today' {:?}",
+                tokens.peek().unwrap()
+            )))
+        }
+        Token::Day(0) => {
+            let now = Timestamp::now();
+            return Ok((
+                Timestamp::from_naive(NaiveDateTime::new(
+                    now.0.date_naive(),
+                    NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+                )),
+                now,
+            ));
+        }
+        Token::Day(-1) => todo!(),
+        Token::Day(i8::MIN..=-2_i8) | Token::Day(1_i8..=i8::MAX) => todo!(),
+        Token::Span(_) => todo!(),
+        Token::Last => todo!(),
+        Token::This => todo!(),
+        Token::To => {
+            return Err(UnexpectedToken(
+                "Timespan cannot start with 'To/Until'".to_owned(),
+            ))
+        }
+        Token::Number(_) => todo!(),
+        Token::PartialIsoDate(_, _) => todo!(),
+        Token::IsoDate(_) => todo!(),
+        Token::Error(e) => return Err(InvalidToken(e)),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
-pub enum Type {
+enum Type {
     Week,
     Month,
     Year,
@@ -10,7 +60,7 @@ pub enum Type {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Token {
+enum Token {
     // today, yesterday
     Day(i8),
 
@@ -27,7 +77,7 @@ pub enum Token {
     Error(String),
 }
 
-pub fn tokenize(text: &[impl AsRef<str>]) -> impl Iterator<Item = Token> + '_ {
+fn tokenize(text: &[impl AsRef<str>]) -> impl Iterator<Item = Token> + '_ {
     text.iter().map(|word| {
         use Token::*;
         match word.as_ref().to_lowercase().as_ref() {
