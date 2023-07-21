@@ -21,6 +21,7 @@ pub enum Token {
     To,
     Number(i32),
 
+    PartialIsoDate(i32, u8),
     IsoDate(chrono::NaiveDate),
 
     Error(String),
@@ -65,9 +66,19 @@ pub fn tokenize(text: &[impl AsRef<str>]) -> impl Iterator<Item = Token> + '_ {
 
             x if x.parse::<chrono::NaiveDate>().is_ok() => IsoDate(x.parse().unwrap()),
 
+            x if parse_partial_date(x).is_some() => {
+                let tmp = parse_partial_date(x).unwrap();
+                PartialIsoDate(tmp.0, tmp.1)
+            }
+
             _ => Error(word.as_ref().to_owned()),
         }
     })
+}
+
+fn parse_partial_date(date: &str) -> Option<(i32, u8)> {
+    let split = date.split_once("-")?;
+    Some((split.0.parse().ok()?, split.1.parse().ok()?))
 }
 
 #[cfg(test)]
@@ -93,14 +104,29 @@ mod test {
 
         check("to until", vec![To, To]);
 
-        // TODO: fixme
         check(
             "last mOnDaY until 2023-07",
+            vec![Last, Span(Type::Weekday(0)), To, PartialIsoDate(2023, 7)],
+        );
+
+        check(
+            "2020-03 to 2023-07-03",
+            vec![
+                PartialIsoDate(2020, 3),
+                To,
+                IsoDate(chrono::NaiveDate::from_ymd_opt(2023, 7, 3).unwrap()),
+            ],
+        );
+
+        check(
+            "last year march until this mOnDaY",
             vec![
                 Last,
-                Span(Type::Weekday(0)),
+                Span(Type::Year),
+                Span(Type::SpecificMonth(2)),
                 To,
-                IsoDate(chrono::NaiveDate::from_ymd_opt(2023, 07, 01).unwrap()),
+                This,
+                Span(Type::Weekday(0)),
             ],
         );
     }
