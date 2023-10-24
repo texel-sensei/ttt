@@ -1,16 +1,26 @@
 #![allow(dead_code)] // TODO: Use code
 
-use chrono::{NaiveDateTime, NaiveTime};
+use std::cmp::min;
+
+use chrono::{Days};
 
 use crate::{database::TimeSpan, model::Timestamp};
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum ParseError {
     EmptyInput,
     InvalidToken(String),
     UnexpectedToken(String),
+
+    /// The time span would exceed the representable time.
+    OutOfRange,
 }
 
-pub fn parse(text: &[impl AsRef<str>]) -> Result<TimeSpan, ParseError> {
+pub struct Context {
+    pub now: Timestamp,
+}
+
+pub fn parse(text: &[impl AsRef<str>], context: &Context) -> Result<TimeSpan, ParseError> {
     use ParseError::*;
     let mut tokens = tokenize(text).peekable();
     let Some(token) = tokens.next() else {
@@ -18,35 +28,36 @@ pub fn parse(text: &[impl AsRef<str>]) -> Result<TimeSpan, ParseError> {
     };
     match token {
         Token::Day(0) if tokens.peek().is_some() => {
-            return Err(UnexpectedToken(format!(
+            Err(UnexpectedToken(format!(
                 "Unexpected token after 'today' {:?}",
                 tokens.peek().unwrap()
             )))
         }
-        Token::Day(0) => {
-            let now = Timestamp::now();
-            return Ok((
-                Timestamp::from_naive(NaiveDateTime::new(
-                    now.0.date_naive(),
-                    NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-                )),
-                now,
-            ));
+        Token::Day(offset) if offset <= 0 => {
+            let offset = Days::new(-offset as u64);
+            let begin = (context.now.at_midnight() - offset).ok_or(OutOfRange)?;
+            Ok((
+                begin,
+                min(context.now, (begin + Days::new(1)).ok_or(OutOfRange)?),
+            ))
         }
-        Token::Day(-1) => todo!(),
-        Token::Day(i8::MIN..=-2_i8) | Token::Day(1_i8..=i8::MAX) => todo!(),
+        Token::Day(n) => {
+            Err(InvalidToken(format!(
+                "Relative days can't be in the future, got now + {n} days"
+            )))
+        }
         Token::Span(_) => todo!(),
         Token::Last => todo!(),
         Token::This => todo!(),
         Token::To => {
-            return Err(UnexpectedToken(
+            Err(UnexpectedToken(
                 "Timespan cannot start with 'To/Until'".to_owned(),
             ))
         }
         Token::Number(_) => todo!(),
         Token::PartialIsoDate(_, _) => todo!(),
         Token::IsoDate(_) => todo!(),
-        Token::Error(e) => return Err(InvalidToken(e)),
+        Token::Error(e) => Err(InvalidToken(e)),
     }
 }
 
@@ -61,7 +72,8 @@ enum Type {
 
 #[derive(Debug, PartialEq, Eq)]
 enum Token {
-    // today, yesterday
+    /// A point in time relative to "Now". For example "today" = `Day(0)` and "yesterday" =
+    /// `Day(-1)`.
     Day(i8),
 
     Span(Type),
@@ -127,16 +139,18 @@ fn tokenize(text: &[impl AsRef<str>]) -> impl Iterator<Item = Token> + '_ {
 }
 
 fn parse_partial_date(date: &str) -> Option<(i32, u8)> {
-    let split = date.split_once("-")?;
+    let split = date.split_once('-')?;
     Some((split.0.parse().ok()?, split.1.parse().ok()?))
 }
 
 #[cfg(test)]
 mod test {
+    use chrono::NaiveDate;
+
     use super::*;
 
     #[test]
-    fn test_parse_examples() {
+    fn test_tokenize_examples() {
         fn check(text: &str, expected: Vec<Token>) {
             let words: Vec<_> = text.split_whitespace().collect();
 
@@ -179,5 +193,40 @@ mod test {
                 Span(Type::Weekday(0)),
             ],
         );
+    }
+
+    fn new_timestamp(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> Timestamp {
+        Timestamp::from_naive(
+            NaiveDate::from_ymd_opt(y, m, d)
+                .unwrap()
+                .and_hms_opt(h, min, s)
+                .unwrap(),
+        )
+    }
+
+    #[test]
+    fn test_parse_today() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = (
+            new_timestamp(2023, 10, 25, 0, 0, 0),
+            new_timestamp(2023, 10, 25, 12, 33, 17),
+        );
+        assert_eq!(parse(&["today"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_yesterday() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = (
+            new_timestamp(2023, 10, 24, 0, 0, 0),
+            new_timestamp(2023, 10, 25, 0, 0, 0),
+        );
+        assert_eq!(parse(&["yesterday"], &context).unwrap(), expected);
     }
 }

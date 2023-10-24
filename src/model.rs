@@ -1,3 +1,5 @@
+use std::ops::{Add, Sub};
+
 use crate::schema::*;
 use chrono::prelude::*;
 use diesel::{
@@ -147,4 +149,33 @@ impl Timestamp {
     pub fn elapsed(&self) -> chrono::Duration {
         Self::now().0 - self.0
     }
+
+    /// Return a new timestamp at the same date, but at midnight (00:00:00).
+    pub fn at_midnight(&self) -> Self {
+        Self(
+            self.0
+                .with_hour(0)
+                .and_then(|o| o.with_minute(0))
+                .and_then(|o| o.with_second(0))
+                .and_then(|o| o.with_nanosecond(0))
+                .unwrap(),
+        )
+    }
 }
+
+macro_rules! ImplOpForTimestamp {
+    ($trait:ident, $name:ident $type:ty => $function:ident) => {
+        impl $trait<$type> for Timestamp {
+            type Output = Option<Timestamp>;
+
+            fn $name(self, rhs: $type) -> Self::Output {
+                Some(Timestamp(self.0.$function(rhs)?))
+            }
+        }
+    };
+}
+
+ImplOpForTimestamp!(Add, add chrono::Days => checked_add_days);
+ImplOpForTimestamp!(Sub, sub chrono::Days => checked_sub_days);
+ImplOpForTimestamp!(Add, add chrono::Months => checked_add_months);
+ImplOpForTimestamp!(Sub, sub chrono::Months => checked_sub_months);

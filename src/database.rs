@@ -316,6 +316,11 @@ pub enum ArchivedState {
     Both,
 }
 
+/// Models a span of time.
+/// The span starts with the first [`Timestamp`] and ends just before the second,
+/// that is, it is a half open range.
+///
+/// It must always hold that TimeSpan.0 < TimeSpan.1.
 pub type TimeSpan = (crate::model::Timestamp, crate::model::Timestamp);
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();

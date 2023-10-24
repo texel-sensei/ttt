@@ -242,7 +242,10 @@ fn min_select_validator(input: &[ListOption<&&String>]) -> Result<Validation, Cu
 }
 
 fn tag_projects(database: &mut Database, project_name: &str, tag_names: &[String]) {
-    let Some(selected_project) = database.lookup_project_by_name(project_name).expect("Database is broken") else {
+    let Some(selected_project) = database
+        .lookup_project_by_name(project_name)
+        .expect("Database is broken")
+    else {
         eprintln!("Project {project_name} seems to be missing from the database. Please add it before using it.");
         std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
                                // added.
@@ -278,7 +281,10 @@ fn tag_projects(database: &mut Database, project_name: &str, tag_names: &[String
 }
 
 fn tag_project_inquire(database: &mut Database, project: &str) {
-    let Some(selected_project) = database.lookup_project_by_name(project).expect("Database is broken") else {
+    let Some(selected_project) = database
+        .lookup_project_by_name(project)
+        .expect("Database is broken")
+    else {
         eprintln!("Project {project} seems to be missing from the database. Please add it before using it.");
         std::process::exit(1); // TODO: Change this to ExitCode::FAILURE if casting support is
                                // added.
@@ -372,7 +378,10 @@ fn main() -> ExitCode {
         Action::Start { name } => {
             let mut project = match name {
                 Some(name) => {
-                    let Some(selected) = database.lookup_project_by_name(&name).expect("Error querying the database.") else {
+                    let Some(selected) = database
+                        .lookup_project_by_name(&name)
+                        .expect("Error querying the database.")
+                    else {
                         eprintln!("Project {name} does not exist in this timeline ;)");
                         return ExitCode::FAILURE;
                     };
@@ -451,7 +460,9 @@ fn main() -> ExitCode {
             (None, _) => unreachable!(),
         },
         Action::Current => {
-            let Ok(current) = database.current_frame() else {return ExitCode::FAILURE};
+            let Ok(current) = database.current_frame() else {
+                return ExitCode::FAILURE;
+            };
             let project = database
                 .lookup_project(current.project)
                 .expect("Database is broken")
