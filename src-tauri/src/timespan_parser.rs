@@ -2,7 +2,7 @@
 
 use std::cmp::min;
 
-use chrono::{Days};
+use chrono::Days;
 
 use crate::{database::TimeSpan, model::Timestamp};
 
@@ -27,12 +27,10 @@ pub fn parse(text: &[impl AsRef<str>], context: &Context) -> Result<TimeSpan, Pa
         return Err(EmptyInput);
     };
     match token {
-        Token::Day(0) if tokens.peek().is_some() => {
-            Err(UnexpectedToken(format!(
-                "Unexpected token after 'today' {:?}",
-                tokens.peek().unwrap()
-            )))
-        }
+        Token::Day(0) if tokens.peek().is_some() => Err(UnexpectedToken(format!(
+            "Unexpected token after 'today' {:?}",
+            tokens.peek().unwrap()
+        ))),
         Token::Day(offset) if offset <= 0 => {
             let offset = Days::new(-offset as u64);
             let begin = (context.now.at_midnight() - offset).ok_or(OutOfRange)?;
@@ -41,19 +39,15 @@ pub fn parse(text: &[impl AsRef<str>], context: &Context) -> Result<TimeSpan, Pa
                 min(context.now, (begin + Days::new(1)).ok_or(OutOfRange)?),
             ))
         }
-        Token::Day(n) => {
-            Err(InvalidToken(format!(
-                "Relative days can't be in the future, got now + {n} days"
-            )))
-        }
+        Token::Day(n) => Err(InvalidToken(format!(
+            "Relative days can't be in the future, got now + {n} days"
+        ))),
         Token::Span(_) => todo!(),
         Token::Last => todo!(),
         Token::This => todo!(),
-        Token::To => {
-            Err(UnexpectedToken(
-                "Timespan cannot start with 'To/Until'".to_owned(),
-            ))
-        }
+        Token::To => Err(UnexpectedToken(
+            "Timespan cannot start with 'To/Until'".to_owned(),
+        )),
         Token::Number(_) => todo!(),
         Token::PartialIsoDate(_, _) => todo!(),
         Token::IsoDate(_) => todo!(),

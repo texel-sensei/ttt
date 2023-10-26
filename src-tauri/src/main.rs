@@ -1,3 +1,6 @@
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::{error::Error, process::ExitCode};
 
 use clap::{arg, Args, Parser, Subcommand};
@@ -23,7 +26,7 @@ use crate::{
 struct Cli {
     /// Action to perform
     #[clap(subcommand)]
-    action: Action,
+    action: Option<Action>,
 }
 
 #[derive(Debug, Parser)]
@@ -374,7 +377,12 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let mut database = Database::new().unwrap();
 
-    match cli.action {
+    let Some(action) = cli.action else {
+        tauri_main();
+        return ExitCode::SUCCESS;
+    };
+
+    match action {
         Action::Start { name } => {
             let mut project = match name {
                 Some(name) => {
@@ -528,4 +536,10 @@ fn pick<T>(items: &mut Vec<T>, idxs: &[usize]) -> Vec<T> {
     items.extend(opt_items.into_iter().flatten());
 
     picked
+}
+
+fn tauri_main() {
+    tauri::Builder::default()
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

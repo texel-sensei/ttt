@@ -3,3 +3,16 @@
 !.gitignore
 *.db
 *.sublime-project
+*.sublime-workspace
+node_modules
+/build
+/package
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+!.eslintignore
+!.eslintrc.cjs
+!.exrc
+!.npmrc
+!.prettierignore
+!.prettierrc

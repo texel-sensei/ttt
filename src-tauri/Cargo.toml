@@ -1,0 +1,30 @@
+[package]
+name = "ttt"
+version = "0.7.0"
+authors = ["texel <texelsensei@posteo.net>", "JohnDoe1112 <johndoe11@posteo.de>"]
+default-run = "ttt"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.4.0", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "1.4.0", features = [] }
+chrono = { version = "0.4.22", features = ["serde"] }
+clap = { version = "4.3.11", features = ["derive"] }
+diesel = { version = "2.0.0", features = ["chrono", "sqlite", "serde_json", "returning_clauses_for_sqlite_3_35"] }
+diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
+directories = "4.0.1"
+dotenvy = "0.15.3"
+inquire = { version = "0.3.0", features = ["date"] }
+itertools = "0.10.5"
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.
+# If you use cargo directly instead of tauri's cli you can use this feature flag to switch between tauri's `dev` and `build` modes.
+# DO NOT REMOVE!!
+custom-protocol = [ "tauri/custom-protocol" ]
