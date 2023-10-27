@@ -8,7 +8,7 @@ use std::{env, fs::create_dir_all};
 
 use crate::{
     error::{Error, Result},
-    model::{Frame, NewFrame, NewProject, NewTag, Project, Tag, TagProject, Timestamp},
+    model::{Frame, NewFrame, NewProject, NewTag, Project, Tag, TagProject, TimeSpan, Timestamp},
     schema::{frames, projects, tags, tags_per_project},
 };
 
@@ -139,21 +139,18 @@ impl Database {
 
     pub fn get_frames_in_span(
         &mut self,
-        (start, end): TimeSpan,
+        span: TimeSpan,
         include_archived: ArchivedState,
     ) -> Result<Vec<(Project, Frame)>> {
-        // TODO(texel, 2022-09-29): Remove this assert once the TimeSpan type guarantees that fact
-        assert!(start < end);
-
         match include_archived {
             state @ (ArchivedState::NotArchived | ArchivedState::OnlyArchived) => {
                 Ok(projects::table
                     .inner_join(frames::table)
                     .select((projects::all_columns, frames::all_columns))
                     .filter(projects::archived.eq(matches!(state, ArchivedState::OnlyArchived)))
-                    .filter(frames::end.ge(start))
+                    .filter(frames::end.ge(span.start()))
                     .or_filter(frames::end.is_null())
-                    .filter(frames::start.lt(end))
+                    .filter(frames::start.lt(span.end()))
                     .order_by(frames::start)
                     .load::<(Project, Frame)>(&mut self.connection)?)
             }
@@ -161,9 +158,9 @@ impl Database {
             ArchivedState::Both => Ok(frames::table
                 .inner_join(projects::table)
                 .select((projects::all_columns, frames::all_columns))
-                .filter(frames::end.ge(start))
+                .filter(frames::end.ge(span.start()))
                 .or_filter(frames::end.is_null())
-                .filter(frames::start.lt(end))
+                .filter(frames::start.lt(span.end()))
                 .order_by(frames::start)
                 .load::<(Project, Frame)>(&mut self.connection)?),
         }
@@ -315,13 +312,6 @@ pub enum ArchivedState {
     OnlyArchived,
     Both,
 }
-
-/// Models a span of time.
-/// The span starts with the first [`Timestamp`] and ends just before the second,
-/// that is, it is a half open range.
-///
-/// It must always hold that TimeSpan.0 < TimeSpan.1.
-pub type TimeSpan = (crate::model::Timestamp, crate::model::Timestamp);
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 

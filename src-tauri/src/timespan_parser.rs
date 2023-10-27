@@ -4,7 +4,7 @@ use std::cmp::min;
 
 use chrono::Days;
 
-use crate::{database::TimeSpan, model::Timestamp};
+use crate::model::{TimeSpan, TimeSpanError, Timestamp};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ParseError {
@@ -12,8 +12,18 @@ pub enum ParseError {
     InvalidToken(String),
     UnexpectedToken(String),
 
+    EndBeforeStart(Timestamp, Timestamp),
+
     /// The time span would exceed the representable time.
     OutOfRange,
+}
+
+impl From<TimeSpanError> for ParseError {
+    fn from(value: TimeSpanError) -> Self {
+        match value {
+            TimeSpanError::EndBeforeStart(start, end) => ParseError::EndBeforeStart(start, end),
+        }
+    }
 }
 
 pub struct Context {
@@ -34,10 +44,10 @@ pub fn parse(text: &[impl AsRef<str>], context: &Context) -> Result<TimeSpan, Pa
         Token::Day(offset) if offset <= 0 => {
             let offset = Days::new(-offset as u64);
             let begin = (context.now.at_midnight() - offset).ok_or(OutOfRange)?;
-            Ok((
+            Ok(TimeSpan::new(
                 begin,
                 min(context.now, (begin + Days::new(1)).ok_or(OutOfRange)?),
-            ))
+            )?)
         }
         Token::Day(n) => Err(InvalidToken(format!(
             "Relative days can't be in the future, got now + {n} days"
@@ -204,10 +214,11 @@ mod test {
             now: new_timestamp(2023, 10, 25, 12, 33, 17),
         };
 
-        let expected = (
+        let expected = TimeSpan::new(
             new_timestamp(2023, 10, 25, 0, 0, 0),
             new_timestamp(2023, 10, 25, 12, 33, 17),
-        );
+        )
+        .unwrap();
         assert_eq!(parse(&["today"], &context).unwrap(), expected);
     }
 
@@ -217,10 +228,11 @@ mod test {
             now: new_timestamp(2023, 10, 25, 12, 33, 17),
         };
 
-        let expected = (
+        let expected = TimeSpan::new(
             new_timestamp(2023, 10, 24, 0, 0, 0),
             new_timestamp(2023, 10, 25, 0, 0, 0),
-        );
+        )
+        .unwrap();
         assert_eq!(parse(&["yesterday"], &context).unwrap(), expected);
     }
 }

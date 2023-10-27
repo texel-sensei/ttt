@@ -1,4 +1,7 @@
-use std::ops::{Add, Sub};
+use std::{
+    fmt::Display,
+    ops::{Add, Sub},
+};
 
 use crate::schema::*;
 use chrono::prelude::*;
@@ -119,6 +122,24 @@ impl ToSql<Text, Sqlite> for Timestamp {
 }
 
 impl Timestamp {
+    /// Create a naive timestamp from the given year, month, day, hour, minute, second.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the given time is invalid, e.g. hour 28.
+    /// ```should_panic
+    /// # use ttt::model::Timestamp;
+    /// let invalid = Timestamp::from_ymdhms(2022, 13, 39, 28, 70, 42);
+    /// ```
+    pub fn from_ymdhms(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> Self {
+        Timestamp::from_naive(
+            NaiveDate::from_ymd_opt(y, m, d)
+                .unwrap()
+                .and_hms_opt(h, min, s)
+                .unwrap(),
+        )
+    }
+
     pub fn now() -> Self {
         let local_time = chrono::Local::now();
         let time = local_time.with_timezone(
@@ -132,9 +153,7 @@ impl Timestamp {
         let local_time = chrono::Local::now();
         let tz = chrono::FixedOffset::east_opt(local_time.offset().local_minus_utc())
             .expect("Time offset out of bounds");
-        Timestamp(chrono::DateTime::<chrono::FixedOffset>::from_local(
-            time, tz,
-        ))
+        Timestamp(time.and_local_timezone(tz).earliest().expect("Time broke"))
     }
 
     pub fn to_local(self) -> DateTime<Local> {
@@ -179,3 +198,70 @@ ImplOpForTimestamp!(Add, add chrono::Days => checked_add_days);
 ImplOpForTimestamp!(Sub, sub chrono::Days => checked_sub_days);
 ImplOpForTimestamp!(Add, add chrono::Months => checked_add_months);
 ImplOpForTimestamp!(Sub, sub chrono::Months => checked_sub_months);
+
+/// Models a span of time.
+/// The span starts with the first [`Timestamp`] and ends just before the second,
+/// that is, it is a half open range.
+///
+/// This type guarantees that `start() < end()`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct TimeSpan(Timestamp, Timestamp);
+
+impl TimeSpan {
+    pub fn new(start: Timestamp, end: Timestamp) -> Result<Self, TimeSpanError> {
+        if end <= start {
+            return Err(TimeSpanError::EndBeforeStart(start, end));
+        }
+
+        Ok(Self(start, end))
+    }
+
+    pub fn start(&self) -> Timestamp {
+        self.0
+    }
+
+    pub fn end(&self) -> Timestamp {
+        self.1
+    }
+
+    /// Return a new timespan that starts with `self` and ends with `other`.
+    ///
+    /// For Example:
+    /// ```
+    /// # use ttt::model::{Timestamp, TimeSpan};
+    /// let today_morning = Timestamp::from_ymdhms(2022, 01, 02, 0, 0, 0);
+    /// let today_noon = Timestamp::from_ymdhms(2022, 01, 02, 12, 0, 0);
+    /// let yesterday_morning = Timestamp::from_ymdhms(2022, 01, 01, 0, 0, 0);
+    /// let yesterday_noon = Timestamp::from_ymdhms(2022, 01, 01, 12, 0, 0);
+    ///
+    /// let today = TimeSpan::new(today_morning, today_noon).unwrap();
+    /// let yesterday = TimeSpan::new(yesterday_morning, yesterday_noon).unwrap();
+    ///
+    /// assert_eq!(
+    ///     yesterday.extend(today).unwrap(),
+    ///     TimeSpan::new(yesterday_morning, today_noon).unwrap()
+    /// );
+    /// ```
+    /// # Errors
+    /// Returns an error if other ends before self starts.
+    #[allow(dead_code)]
+    pub fn extend(&self, other: Self) -> Result<Self, TimeSpanError> {
+        Self::new(self.start(), other.end())
+    }
+}
+
+#[derive(Debug)]
+pub enum TimeSpanError {
+    EndBeforeStart(Timestamp, Timestamp),
+}
+
+impl std::error::Error for TimeSpanError {}
+
+impl Display for TimeSpanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TimeSpanError as T;
+        match self {
+            T::EndBeforeStart(s, e) => write!(f, "'{s:?}' is after '{e:?}' but should be before."),
+        }
+    }
+}

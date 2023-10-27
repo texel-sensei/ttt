@@ -16,10 +16,7 @@ mod model;
 mod schema;
 mod timespan_parser;
 
-use crate::{
-    database::TimeSpan,
-    model::{Frame, Timestamp},
-};
+use crate::model::{Frame, TimeSpan, Timestamp};
 
 #[derive(Parser)]
 #[clap(author, version)]
@@ -133,7 +130,7 @@ fn do_inquire_stuff() -> Result<TimeSpan, Box<dyn Error>> {
 
     let begin = Timestamp::from_naive(begin.and_time(start_time));
     let end = Timestamp::from_naive(end.and_time(end_time));
-    Ok((begin, end))
+    Ok(TimeSpan::new(begin, end)?)
 }
 
 trait DurationExt {
@@ -207,11 +204,6 @@ fn stop_current_frame(db: &mut Database) -> Option<Frame> {
 }
 
 fn list_frames(db: &mut Database, span: TimeSpan) {
-    let (start, end) = span;
-
-    // TODO(texel, 2022-09-29): Remove this assert once the TimeSpan type guarantees that fact
-    assert!(start < end);
-
     let data = db
         .get_frames_in_span(span, ArchivedState::Both)
         .expect("Database is broken");
@@ -452,7 +444,7 @@ fn main() -> ExitCode {
                 // todo: handle commandline options in detail, assuming "since_yesterday" for now
                 let end = Timestamp::now();
                 let start = Timestamp(end.0 - chrono::Duration::days(1));
-                (start, end)
+                TimeSpan::new(start, end).expect("Math broke, yesterday ended up after today ")
             };
 
             list_frames(&mut database, span);
