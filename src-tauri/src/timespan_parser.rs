@@ -11,6 +11,7 @@ pub enum ParseError {
     EmptyInput,
     InvalidToken(String),
     UnexpectedToken(String),
+    MissingEnd,
 
     EndBeforeStart(Timestamp, Timestamp),
 
@@ -42,12 +43,19 @@ pub fn parse(text: &[impl AsRef<str>], context: &Context) -> Result<TimeSpan, Pa
             tokens.peek().unwrap()
         ))),
         Token::Day(offset) if offset <= 0 => {
-            let offset = Days::new(-offset as u64);
-            let begin = (context.now.at_midnight() - offset).ok_or(OutOfRange)?;
-            Ok(TimeSpan::new(
-                begin,
-                min(context.now, (begin + Days::new(1)).ok_or(OutOfRange)?),
-            )?)
+            let span = get_range(token, context)?;
+            match tokens.peek() {
+                None => Ok(span),
+                Some(Token::To) => {
+                    let _ = tokens.next();
+
+                    // TODO(texel, 2023-10-27): Check for garbage after this token
+                    Ok(span.extend(get_range(tokens.next().ok_or(MissingEnd)?, context)?)?)
+                }
+                Some(token) => Err(UnexpectedToken(format!(
+                    "Expect 'to' or 'until', got '{token:?}'"
+                ))),
+            }
         }
         Token::Day(n) => Err(InvalidToken(format!(
             "Relative days can't be in the future, got now + {n} days"
@@ -62,6 +70,21 @@ pub fn parse(text: &[impl AsRef<str>], context: &Context) -> Result<TimeSpan, Pa
         Token::PartialIsoDate(_, _) => todo!(),
         Token::IsoDate(_) => todo!(),
         Token::Error(e) => Err(InvalidToken(e)),
+    }
+}
+
+fn get_range(token: Token, context: &Context) -> Result<TimeSpan, ParseError> {
+    use ParseError::OutOfRange;
+    match token {
+        Token::Day(offset) if offset <= 0 => {
+            let offset = Days::new(-offset as u64);
+            let begin = (context.now.at_midnight() - offset).ok_or(OutOfRange)?;
+            Ok(TimeSpan::new(
+                begin,
+                min(context.now, (begin + Days::new(1)).ok_or(OutOfRange)?),
+            )?)
+        }
+        _ => panic!("at the disco"),
     }
 }
 
@@ -234,5 +257,22 @@ mod test {
         )
         .unwrap();
         assert_eq!(parse(&["yesterday"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_simple_range() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 10, 24, 0, 0, 0),
+            new_timestamp(2023, 10, 25, 12, 33, 17),
+        )
+        .unwrap();
+        assert_eq!(
+            parse(&["yesterday", "until", "today"], &context).unwrap(),
+            expected
+        );
     }
 }
