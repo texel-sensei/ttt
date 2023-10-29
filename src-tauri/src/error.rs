@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use serde::{Serialize, Serializer};
+
 use crate::model::Frame;
 
 #[derive(Debug)]
@@ -56,3 +58,42 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+impl Serialize for Error {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Error::AlreadyTracking(frame) => {
+                serializer.serialize_newtype_variant("Error", 0, "AlreadyTracking", frame)
+            }
+            Error::NoActiveFrame => serializer.serialize_unit_variant("Error", 1, "NoActiveFrame"),
+            Error::ProjectNotFound(projectname) => {
+                serializer.serialize_newtype_variant("Error", 2, "ProjectNotFound", projectname)
+            }
+            Error::TagNotFound(tagname) => {
+                serializer.serialize_newtype_variant("Error", 3, "TagNotFound", tagname)
+            }
+            Error::DatabaseError(dberror) => serializer.serialize_newtype_variant(
+                "Error",
+                4,
+                "DatabaseError",
+                &dberror.to_string(),
+            ),
+            Error::DatabaseConnectionError(connectionerror) => serializer
+                .serialize_newtype_variant(
+                    "Error",
+                    5,
+                    "DatabaseConnectionError",
+                    &connectionerror.to_string(),
+                ),
+            Error::IoError(ioerror) => {
+                serializer.serialize_newtype_variant("Error", 6, "IoError", &ioerror.to_string())
+            }
+        }
+    }
+}

@@ -3,7 +3,6 @@ use std::{
     ops::{Add, Sub},
 };
 
-use crate::schema::*;
 use chrono::prelude::*;
 use diesel::{
     backend::Backend,
@@ -13,8 +12,11 @@ use diesel::{
     sqlite::Sqlite,
     AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable,
 };
+use serde::Serialize;
 
-#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone)]
+use crate::schema::*;
+
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone, Serialize)]
 pub struct Frame {
     id: i32,
 
@@ -30,7 +32,7 @@ impl Frame {
     }
 }
 
-#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone)]
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone, Serialize)]
 pub struct Tag {
     id: i32,
     pub name: String,
@@ -44,7 +46,7 @@ impl Tag {
     }
 }
 
-#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone)]
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone, Serialize)]
 pub struct Project {
     id: i32,
     pub name: String,
@@ -94,7 +96,9 @@ pub struct NewFrame<'a> {
     pub end: Option<&'a Timestamp>,
 }
 
-#[derive(Debug, AsExpression, FromSqlRow, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(
+    Debug, AsExpression, FromSqlRow, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize,
+)]
 #[diesel(sql_type=diesel::sql_types::Text)]
 pub struct Timestamp(pub DateTime<FixedOffset>);
 
@@ -204,7 +208,7 @@ ImplOpForTimestamp!(Sub, sub chrono::Months => checked_sub_months);
 /// that is, it is a half open range.
 ///
 /// This type guarantees that `start() < end()`.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct TimeSpan(Timestamp, Timestamp);
 
 impl TimeSpan {
