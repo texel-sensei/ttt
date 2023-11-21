@@ -1,8 +1,8 @@
 #![allow(dead_code)] // TODO: Use code
 
-use std::cmp::min;
+use std::{cmp::min, iter::Peekable};
 
-use chrono::Days;
+use chrono::{Datelike, Days};
 
 use crate::model::{TimeSpan, TimeSpanError, Timestamp};
 
@@ -32,50 +32,36 @@ pub struct Context {
 }
 
 pub fn parse(text: &[impl AsRef<str>], context: &Context) -> Result<TimeSpan, ParseError> {
-    use ParseError::*;
     let mut tokens = tokenize(text).peekable();
-    let Some(token) = tokens.next() else {
-        return Err(EmptyInput);
-    };
-    match token {
-        Token::Day(0) if tokens.peek().is_some() => Err(UnexpectedToken(format!(
-            "Unexpected token after 'today' {:?}",
-            tokens.peek().unwrap()
-        ))),
-        Token::Day(offset) if offset <= 0 => {
-            let span = get_range(token, context)?;
-            match tokens.peek() {
-                None => Ok(span),
-                Some(Token::To) => {
-                    let _ = tokens.next();
 
-                    // TODO(texel, 2023-10-27): Check for garbage after this token
-                    Ok(span.extend(get_range(tokens.next().ok_or(MissingEnd)?, context)?)?)
-                }
-                Some(token) => Err(UnexpectedToken(format!(
-                    "Expect 'to' or 'until', got '{token:?}'"
-                ))),
+    let initial_timespan = parse_simple_timespan(&mut tokens, context)?;
+
+    match tokens.next() {
+        None => Ok(initial_timespan),
+        Some(Token::To) => {
+            let full_timespan =
+                initial_timespan.extend(parse_simple_timespan(&mut tokens, context)?)?;
+            if tokens.peek().is_some() {
+                // TODO(texel, 2023-11-21): return original lexeme
+                return Err(ParseError::UnexpectedToken(format!("{:?}", tokens.peek())));
             }
+            Ok(full_timespan)
         }
-        Token::Day(n) => Err(InvalidToken(format!(
-            "Relative days can't be in the future, got now + {n} days"
-        ))),
-        Token::Span(_) => todo!(),
-        Token::Last => todo!(),
-        Token::This => todo!(),
-        Token::To => Err(UnexpectedToken(
-            "Timespan cannot start with 'To/Until'".to_owned(),
-        )),
-        Token::Number(_) => todo!(),
-        Token::PartialIsoDate(_, _) => todo!(),
-        Token::IsoDate(_) => todo!(),
-        Token::Error(e) => Err(InvalidToken(e)),
+        Some(other_token) => Err(ParseError::UnexpectedToken(format!("{:?}", other_token))),
     }
 }
 
-fn get_range(token: Token, context: &Context) -> Result<TimeSpan, ParseError> {
+/// Parses a timespan without the token "To", e.g. "last week".
+fn parse_simple_timespan(
+    tokens: &mut Peekable<impl Iterator<Item = Token>>,
+    context: &Context,
+) -> Result<TimeSpan, ParseError> {
     use ParseError::OutOfRange;
-    match token {
+    match tokens.next().ok_or(ParseError::EmptyInput)? {
+        Token::Day(0) if tokens.peek().is_some() => Err(ParseError::UnexpectedToken(format!(
+            "Unexpected token after 'today' {:?}",
+            tokens.peek().unwrap()
+        ))),
         Token::Day(offset) if offset <= 0 => {
             let offset = Days::new(-offset as u64);
             let begin = (context.now.at_midnight() - offset).ok_or(OutOfRange)?;
@@ -84,8 +70,56 @@ fn get_range(token: Token, context: &Context) -> Result<TimeSpan, ParseError> {
                 min(context.now, (begin + Days::new(1)).ok_or(OutOfRange)?),
             )?)
         }
-        _ => panic!("at the disco"),
+        Token::To => Err(ParseError::UnexpectedToken(
+            "Timespan cannot start with 'To/Until'".to_owned(),
+        )),
+        Token::This if matches!(tokens.peek(), Some(Token::Span(_))) => {
+            let Some(Token::Span(span)) = tokens.next() else {
+                unreachable!()
+            };
+            Ok(parse_span(span, context, true)?)
+        }
+        Token::Last if matches!(tokens.peek(), Some(Token::Span(_))) => {
+            let Some(Token::Span(span)) = tokens.next() else {
+                unreachable!()
+            };
+            Ok(parse_span(span, context, false)?)
+        }
+        other => Err(ParseError::UnexpectedToken(format!(
+            "Unexpected token '{other:?}'"
+        ))),
     }
+}
+
+fn parse_span(span: Type, context: &Context, is_current: bool) -> Result<TimeSpan, TimeSpanError> {
+    let timespan = match span {
+        Type::Week => {
+            let now = context.now;
+            let start =
+                now.at_midnight() - Days::new(now.0.weekday().num_days_from_monday() as u64);
+            let start = start.unwrap();
+            let end = start + Days::new(7);
+            let end = end.unwrap();
+
+            TimeSpan::new(start, end)
+        }
+        Type::Month => todo!(),
+        Type::Year => todo!(),
+        Type::Weekday(_) => todo!(),
+        Type::SpecificMonth(_) => todo!(),
+    }?;
+
+    Ok(match (&span, is_current) {
+        (_, true) => timespan,
+        (Type::Week | Type::Weekday(_), false) => {
+            let start = timespan.start() - Days::new(7);
+            let end = timespan.end() - Days::new(7);
+
+            TimeSpan::new(start.unwrap(), end.unwrap())?
+        }
+        (Type::Month, false) => todo!(),
+        (Type::Year | Type::SpecificMonth(_), false) => todo!(),
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -274,5 +308,57 @@ mod test {
             parse(&["yesterday", "until", "today"], &context).unwrap(),
             expected
         );
+    }
+
+    #[test]
+    fn test_parse_simple_range_with_garbage_at_the_end_fails() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        assert!(matches!(
+            parse(&["yesterday", "until", "today", "to"], &context),
+            Err(ParseError::UnexpectedToken(_))
+        ));
+    }
+
+    #[test]
+    fn test_this_today_is_not_allowed() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        assert!(matches!(
+            parse(&["this", "today"], &context),
+            Err(ParseError::UnexpectedToken(_))
+        ));
+    }
+
+    #[test]
+    fn test_parse_this_week() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 10, 23, 0, 0, 0),
+            new_timestamp(2023, 10, 30, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["this", "week"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_last_week() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 10, 16, 0, 0, 0),
+            new_timestamp(2023, 10, 23, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["last", "week"], &context).unwrap(), expected);
     }
 }
