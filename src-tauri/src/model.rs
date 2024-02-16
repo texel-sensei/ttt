@@ -12,7 +12,7 @@ use diesel::{
     sqlite::Sqlite,
     AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use typeshare::typeshare;
 
 use crate::schema::*;
@@ -48,7 +48,9 @@ impl Tag {
     }
 }
 
-#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone, Serialize)]
+#[derive(
+    Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone, Serialize, Deserialize,
+)]
 #[typeshare]
 pub struct Project {
     id: i32,
@@ -100,7 +102,17 @@ pub struct NewFrame<'a> {
 }
 
 #[derive(
-    Debug, AsExpression, FromSqlRow, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize,
+    Debug,
+    AsExpression,
+    FromSqlRow,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
 )]
 #[diesel(sql_type=diesel::sql_types::Text)]
 #[typeshare(serialized_as = "string")]

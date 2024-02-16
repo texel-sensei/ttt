@@ -6,18 +6,17 @@
   let frame: Frame|undefined = undefined;
   let project: Project|undefined = undefined;
 
-  async function current_frame() {
+  async function stop() {
     try {
-      frame = await invoke('current_frame');
+      frame = await invoke('stop');
       console.log(frame);
       if (frame) {
         project = await invoke('lookup_project', {projectId: frame.project});
-        console.log(project);
+        console.log('Stopped project: ' + project);
         errormessage = undefined;
       } else {
-        project = undefined
+        errormessage = 'Don\'t stop me now!';
       }
-
     } catch (e: any) {
       errormessage = e.toString();
     }
@@ -25,8 +24,8 @@
 </script>
 
 <div>
-  <button on:click="{current_frame}">Show</button>
-  <p>{project?.name ?? 'Not running'}</p>
-  <p>{frame?.start ?? 'Not running'}</p>
-  <p>{errormessage ?? ''}</p>
+  <button on:click="{stop}">Stop</button>
+{#if errormessage}
+{errormessage}
+{/if}
 </div>
