@@ -22,6 +22,7 @@ directories = "4.0.1"
 dotenvy = "0.15.3"
 inquire = { version = "0.3.0", features = ["date"] }
 itertools = "0.10.5"
+typeshare = "1.0.1"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

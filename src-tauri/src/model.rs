@@ -13,10 +13,12 @@ use diesel::{
     AsChangeset, AsExpression, FromSqlRow, Identifiable, Insertable, Queryable,
 };
 use serde::Serialize;
+use typeshare::typeshare;
 
 use crate::schema::*;
 
 #[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone, Serialize)]
+#[typeshare]
 pub struct Frame {
     id: i32,
 
@@ -47,6 +49,7 @@ impl Tag {
 }
 
 #[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug, Clone, Serialize)]
+#[typeshare]
 pub struct Project {
     id: i32,
     pub name: String,
@@ -100,6 +103,7 @@ pub struct NewFrame<'a> {
     Debug, AsExpression, FromSqlRow, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize,
 )]
 #[diesel(sql_type=diesel::sql_types::Text)]
+#[typeshare(serialized_as = "string")]
 pub struct Timestamp(pub DateTime<FixedOffset>);
 
 impl<DB> FromSql<Text, DB> for Timestamp

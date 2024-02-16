@@ -1,21 +1,28 @@
-<script>
-  import { invoke } from '@tauri-apps/api/tauri'
+<script lang="ts">
+  import { invoke } from '@tauri-apps/api/tauri';
+  import type { Frame, Project } from '../backend';
 
-  let errormessage = ''
-  let frame = ''
+  let errormessage: string|undefined = undefined;
+  let frame: Frame|undefined = undefined;
+  let project: Project|undefined = undefined;
 
   async function current() {
     try {
       frame = await invoke('current');
       console.log(frame);
-    } catch (e) {
+      if (frame) {
+        project = await invoke('lookup_project', {projectId: frame.project});
+        console.log(project);
+      }
+    } catch (e: any) {
       errormessage = e.toString();
     }
   }
 </script>
 
 <div>
-  <p>{frame}</p>
   <button on:click="{current}">Show</button>
-  <p>{errormessage}</p>
+  <p>{project?.name ?? 'Not running'}</p>
+  <p>{frame?.start ?? 'Not running'}</p>
+  <p>{errormessage ?? ''}</p>
 </div>

@@ -16,3 +16,4 @@ vite.config.ts.timestamp-*
 !.npmrc
 !.prettierignore
 !.prettierrc
+src/backend.ts
