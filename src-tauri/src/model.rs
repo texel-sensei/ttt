@@ -211,10 +211,10 @@ impl From<DateTime<FixedOffset>> for Timestamp {
 macro_rules! ImplOpForTimestamp {
     ($trait:ident, $name:ident $type:ty => $function:ident) => {
         impl $trait<$type> for Timestamp {
-            type Output = Option<Timestamp>;
+            type Output = Timestamp;
 
             fn $name(self, rhs: $type) -> Self::Output {
-                Some(Timestamp(self.0.$function(rhs)?))
+                Timestamp(self.0.$function(rhs).expect("Reached end of time"))
             }
         }
     };
@@ -234,7 +234,10 @@ ImplOpForTimestamp!(Sub, sub chrono::Months => checked_sub_months);
 pub struct TimeSpan(Timestamp, Timestamp);
 
 impl TimeSpan {
-    pub fn new(start: impl Into<Timestamp>, end: impl Into<Timestamp>) -> Result<Self, TimeSpanError> {
+    pub fn new(
+        start: impl Into<Timestamp>,
+        end: impl Into<Timestamp>,
+    ) -> Result<Self, TimeSpanError> {
         let start = start.into();
         let end = end.into();
         if end <= start {
@@ -250,6 +253,14 @@ impl TimeSpan {
 
     pub fn end(&self) -> Timestamp {
         self.1
+    }
+
+    pub fn start_mut(&mut self) -> &mut Timestamp {
+        &mut self.0
+    }
+
+    pub fn end_mut(&mut self) -> &mut Timestamp {
+        &mut self.1
     }
 
     /// Return a new timespan that starts with `self` and ends with `other`.

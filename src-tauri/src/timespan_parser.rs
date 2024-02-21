@@ -2,7 +2,7 @@
 
 use std::{cmp::min, iter::Peekable};
 
-use chrono::{Datelike, Days};
+use chrono::{Datelike, Days, Months};
 
 use crate::model::{TimeSpan, TimeSpanError, Timestamp};
 
@@ -17,6 +17,9 @@ pub enum ParseError {
 
     /// The time span would exceed the representable time.
     OutOfRange,
+
+    /// Nobody seems to agree when "this tuesday" is.
+    LanguageIsComplicated,
 }
 
 impl From<TimeSpanError> for ParseError {
@@ -56,7 +59,6 @@ fn parse_simple_timespan(
     tokens: &mut Peekable<impl Iterator<Item = Token>>,
     context: &Context,
 ) -> Result<TimeSpan, ParseError> {
-    use ParseError::OutOfRange;
     match tokens.next().ok_or(ParseError::EmptyInput)? {
         Token::Day(0) if tokens.peek().is_some() => Err(ParseError::UnexpectedToken(format!(
             "Unexpected token after 'today' {:?}",
@@ -64,10 +66,10 @@ fn parse_simple_timespan(
         ))),
         Token::Day(offset) if offset <= 0 => {
             let offset = Days::new(-offset as u64);
-            let begin = (context.now.at_midnight() - offset).ok_or(OutOfRange)?;
+            let begin = context.now.at_midnight() - offset;
             Ok(TimeSpan::new(
                 begin,
-                min(context.now, (begin + Days::new(1)).ok_or(OutOfRange)?),
+                min(context.now, begin + Days::new(1)),
             )?)
         }
         Token::To => Err(ParseError::UnexpectedToken(
@@ -85,28 +87,103 @@ fn parse_simple_timespan(
             };
             Ok(parse_span(span, context, false)?)
         }
+
+        // parse e.g. "last 3 weeks"
+        Token::Last if matches!(tokens.peek(), Some(Token::Number(_))) => {
+            // let Some(Token::Number(number)) = tokens.next() else {
+            //     unreachable!()
+            // };
+            // let Some(token) = tokens.next() else {
+            //     return Err(ParseError::MissingEnd);
+            // };
+            // let Token::Span(span @ (Type::Week | Type::Month | Type::Year)) = token else {
+            //     return Err(ParseError::UnexpectedToken(
+            //         format!("Unexpected '{token:?}' after 'last {number}', expected 'weeks', 'months' or 'years'")
+            //     ));
+            // };
+            // let mut duration = parse_span(span, context, false)?;
+            // match span {
+            //     Type::Week => {
+            //         *duration.start_mut() = duration.start() - Days::new(7*number as u64);
+            //     },
+            //     Type::Month => {
+            //         *duration.start_mut() = duration.start() - Months::new(number as u32 - 1);
+            //     },
+            //     Type::Year => todo!(),
+            //     _ => unreachable!(),
+            // }
+            // Ok(duration)
+            todo!()
+        }
+        Token::Span(Type::Weekday(day)) => {
+            let now = context.now;
+            let mut start = now.at_midnight()
+                - Days::new(now.0.weekday().num_days_from_monday() as u64)
+                + Days::new(day as u64);
+            if start > now {
+                start = start - Days::new(7);
+            }
+            let end = start + Days::new(1);
+
+            Ok(TimeSpan::new(start, end)?)
+        }
+        Token::Span(Type::SpecificMonth(month)) => {
+            let now = context.now;
+            let mut start: Timestamp = now
+                .at_midnight()
+                .0
+                .with_day(1)
+                .unwrap()
+                .with_month0(month as u32)
+                .unwrap()
+                .into();
+
+            if start > now {
+                start = start - Months::new(12);
+            }
+            let end = start + Months::new(1);
+
+            Ok(TimeSpan::new(start, end)?)
+        }
         other => Err(ParseError::UnexpectedToken(format!(
             "Unexpected token '{other:?}'"
         ))),
     }
 }
 
-fn parse_span(span: Type, context: &Context, is_current: bool) -> Result<TimeSpan, TimeSpanError> {
+fn parse_span(span: Type, context: &Context, is_current: bool) -> Result<TimeSpan, ParseError> {
     let timespan = match span {
         Type::Week => {
             let now = context.now;
             let start =
                 now.at_midnight() - Days::new(now.0.weekday().num_days_from_monday() as u64);
-            let start = start.unwrap();
             let end = start + Days::new(7);
-            let end = end.unwrap();
 
             TimeSpan::new(start, end)
         }
-        Type::Month => todo!(),
-        Type::Year => todo!(),
-        Type::Weekday(_) => todo!(),
-        Type::SpecificMonth(_) => todo!(),
+        Type::Month => {
+            let start = context.now.at_midnight().0.with_day(1).unwrap();
+            let end = start + Months::new(1);
+
+            TimeSpan::new(start, end)
+        }
+        Type::Year => {
+            let start = context
+                .now
+                .at_midnight()
+                .0
+                .with_day(1)
+                .unwrap()
+                .with_month(1)
+                .unwrap();
+            let end = start + Months::new(12);
+
+            TimeSpan::new(start, end)
+        }
+        Type::Weekday(_) => {
+            return Err(ParseError::LanguageIsComplicated);
+        }
+        Type::SpecificMonth(_) => return Err(ParseError::LanguageIsComplicated),
     }?;
 
     Ok(match (&span, is_current) {
@@ -115,19 +192,33 @@ fn parse_span(span: Type, context: &Context, is_current: bool) -> Result<TimeSpa
             let start = timespan.start() - Days::new(7);
             let end = timespan.end() - Days::new(7);
 
-            TimeSpan::new(start.unwrap(), end.unwrap())?
+            TimeSpan::new(start, end)?
         }
-        (Type::Month, false) => todo!(),
-        (Type::Year | Type::SpecificMonth(_), false) => todo!(),
+        (Type::Month, false) => {
+            let start = timespan.start() - Months::new(1);
+            let end = timespan.end() - Months::new(1);
+
+            TimeSpan::new(start, end)?
+        }
+        (Type::Year | Type::SpecificMonth(_), false) => {
+            let start = timespan.start() - Months::new(12);
+            let end = timespan.end() - Months::new(12);
+
+            TimeSpan::new(start, end)?
+        }
     })
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Type {
     Week,
     Month,
     Year,
+
+    /// Day of the week, zero based
     Weekday(u8),
+
+    /// Month of the year, zero based
     SpecificMonth(u8),
 }
 
@@ -142,7 +233,7 @@ enum Token {
     Last,
     This,
     To,
-    Number(i32),
+    Number(u32),
 
     PartialIsoDate(i32, u8),
     IsoDate(chrono::NaiveDate),
@@ -181,11 +272,12 @@ fn tokenize(text: &[impl AsRef<str>]) -> impl Iterator<Item = Token> + '_ {
             "november" => Span(Type::SpecificMonth(10)),
             "december" => Span(Type::SpecificMonth(11)),
 
+            // TODO(texel, 2024-02-21): include days? last 3 days
             "week" | "weeks" => Span(Type::Week),
             "month" | "months" => Span(Type::Month),
             "year" | "years" => Span(Type::Year),
 
-            x if x.parse::<i32>().is_ok() => Number(x.parse().unwrap()),
+            x if x.parse::<u32>().is_ok() => Number(x.parse().unwrap()),
 
             x if x.parse::<chrono::NaiveDate>().is_ok() => IsoDate(x.parse().unwrap()),
 
@@ -360,5 +452,176 @@ mod test {
         )
         .unwrap();
         assert_eq!(parse(&["last", "week"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_last_month() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 9, 1, 0, 0, 0),
+            new_timestamp(2023, 10, 1, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["last", "month"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_this_month() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 10, 1, 0, 0, 0),
+            new_timestamp(2023, 11, 1, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["this", "month"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_this_year() {
+        let context = Context {
+            now: new_timestamp(2023, 10, 25, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 1, 1, 0, 0, 0),
+            new_timestamp(2024, 1, 1, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["this", "year"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_last_year() {
+        let context = Context {
+            now: new_timestamp(2024, 2, 29, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 1, 1, 0, 0, 0),
+            new_timestamp(2024, 1, 1, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["last", "year"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_wednesday() {
+        let context = Context {
+            // saturday
+            now: new_timestamp(2024, 2, 24, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2024, 2, 21, 0, 0, 0),
+            new_timestamp(2024, 2, 22, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["wednesday"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_wednesday_when_today_is_wednesday() {
+        let context = Context {
+            // wednesday
+            now: new_timestamp(2024, 2, 21, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2024, 2, 21, 0, 0, 0),
+            new_timestamp(2024, 2, 22, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["wednesday"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_complicated_language() {
+        let context = Context {
+            // wednesday
+            now: new_timestamp(2024, 2, 21, 12, 33, 17),
+        };
+
+        assert_eq!(
+            parse(&["this", "thursday"], &context),
+            Err(ParseError::LanguageIsComplicated)
+        );
+        assert_eq!(
+            parse(&["last", "thursday"], &context),
+            Err(ParseError::LanguageIsComplicated)
+        );
+    }
+
+    #[test]
+    fn test_parse_this_thursday() {
+        let context = Context {
+            // wednesday
+            now: new_timestamp(2024, 2, 21, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2024, 2, 15, 0, 0, 0),
+            new_timestamp(2024, 2, 16, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["thursday"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_march() {
+        let context = Context {
+            now: new_timestamp(2024, 3, 21, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2024, 3, 1, 0, 0, 0),
+            new_timestamp(2024, 4, 1, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["march"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_april_returns_last_years_april() {
+        let context = Context {
+            now: new_timestamp(2024, 3, 21, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 4, 1, 0, 0, 0),
+            new_timestamp(2023, 5, 1, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(parse(&["april"], &context).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_more_complicated_thing() {
+        let context = Context {
+            now: new_timestamp(2024, 3, 21, 12, 33, 17),
+        };
+
+        let expected = TimeSpan::new(
+            new_timestamp(2023, 4, 1, 0, 0, 0),
+            new_timestamp(2024, 3, 21, 0, 0, 0),
+        )
+        .unwrap();
+        assert_eq!(
+            parse(&["april", "to", "yesterday"], &context).unwrap(),
+            expected
+        );
+        //assert_eq!(parse(&["april", "to", "2023-03-20"], &context).unwrap(), expected);
+
+        // assert_eq!(
+        //     parse(&["last", "3", "weeks"], &context).unwrap(),
+        //     TimeSpan::new(
+        //         new_timestamp(2023, 4, 1, 0, 0, 0),
+        //         new_timestamp(2024, 3, 21, 12, 33, 17),
+        //     ).unwrap());
     }
 }
