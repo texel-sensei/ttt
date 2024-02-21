@@ -202,6 +202,12 @@ impl Timestamp {
     }
 }
 
+impl From<DateTime<FixedOffset>> for Timestamp {
+    fn from(value: DateTime<FixedOffset>) -> Self {
+        Self(value)
+    }
+}
+
 macro_rules! ImplOpForTimestamp {
     ($trait:ident, $name:ident $type:ty => $function:ident) => {
         impl $trait<$type> for Timestamp {
@@ -228,7 +234,9 @@ ImplOpForTimestamp!(Sub, sub chrono::Months => checked_sub_months);
 pub struct TimeSpan(Timestamp, Timestamp);
 
 impl TimeSpan {
-    pub fn new(start: Timestamp, end: Timestamp) -> Result<Self, TimeSpanError> {
+    pub fn new(start: impl Into<Timestamp>, end: impl Into<Timestamp>) -> Result<Self, TimeSpanError> {
+        let start = start.into();
+        let end = end.into();
         if end <= start {
             return Err(TimeSpanError::EndBeforeStart(start, end));
         }
